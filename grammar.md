@@ -3,9 +3,12 @@
 ## Notations
 
 - `T*`: arbitrary (zero or more) `T`.
+- `T+`: positive (one or more) `T`.
+- `T?`: optional (one or zero) `T`.
+- `T | U`: `T` or `U`.
+- `(T U)`: group.
 - `"a"`: literal `a`.
-- `[T]`: optional (one or zero) `T`.
-- `Comma<T>`: comma separated list of `T`.
+- `Comma<T>`: comma separated list of `T`, i.e. `T ("," T)*`.
 
 ## Simplified Grammar
 
@@ -19,8 +22,8 @@ Config ::= Assign ";"
 Assign ::= IDENT "=" Exp
 Topology ::= "nodetype" Comma<Type> ";"
            | Type Comma<IDENT> ";"
-           | "link" Comma<IDENT> "--" Comma<IDENT> ";"
-           | "route" "(" Comma<IDENT> ")" "{" RouteEntry "}"
+           | "link" Comma<IDENT> ("--" Comma<IDENT>)* ";"
+           | "route" "(" Comma<IDENT> ")" "{" RouteEntry* "}"
 Type ::= IDENT
 RouteEntry ::= Comma<IDENT> ":" IDENT ";"
 Protocol ::= "var" "(" Type ")" Comma<Assign> ";"
@@ -28,7 +31,9 @@ Protocol ::= "var" "(" Type ")" Comma<Assign> ";"
 Stmt ::= Breakpoint ":"
        | [Exp] ";"
        | "temp" Comma<Assign> ";"
-       | "if" "(" Exp ")" "{" Stmt* "}" ["else" "{" Stmt* "}"]
+       | "if" "(" Exp ")" "{" Stmt* "}"
+         ("elif" "(" Exp ")" "{" Stmt* "}")*
+         ("else" "{" Stmt* "}")?
        | "while" "(" Exp ")" "{" Stmt* "}"
        | "break" ";"
        | "continue" ";"
@@ -37,9 +42,9 @@ Exp ::= "forall" IDENT "in" Exp ":" Exp
       | "exists" IDENT "in" Exp ":" Exp
       | Exp BinaryOp Exp
       | UnaryOp Exp
+      | "(" Exp ")"
       | Func "(" Comma<Exp> ")"
-UnaryOp ::= // TODO
-BinaryOp ::= // TODO
+      | LiteralValue
 Func ::= "send" | "multicast" | "receive" | "wait"
        | "exit" | "assert"
 Property ::= IDENT "=" Ctl ";"
