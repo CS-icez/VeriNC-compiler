@@ -49,15 +49,17 @@ struct SectionAST {
         Protocol,
         Property,
     } rule;
-    ConfigAST* config;
-    TopologyAST* topology;
-    ProtocolAST* protocol;
-    PropertyAST* property;
+    vector<ConfigAST*>*   config;
+    vector<TopologyAST*>* topology;
+    vector<ProtocolAST*>* protocol;
+    vector<PropertyAST*>* property;
 
-    SectionAST(Rule _rule, ConfigAST* _config, TopologyAST* _topology,
-        ProtocolAST* _protocol, PropertyAST* _property) :
-        rule(_rule), config(_config), topology(_topology), protocol(_protocol),
-            property(_property) { }
+    SectionAST(Rule _rule, vector<ConfigAST*>* _config,
+        vector<TopologyAST*>* _topology, vector<ProtocolAST*>* _protocol,
+        vector<PropertyAST*>* _property) :
+        rule(_rule), config(_config), topology(_topology),
+            protocol(_protocol), property(_property) { }
+
     ~SectionAST() {
         delete_if(config);
         delete_if(topology);
@@ -67,10 +69,10 @@ struct SectionAST {
 };
 
 struct ConfigAST {
-    vector<AssignAST*>* assigns;
+    AssignAST* assign;
 
-    ConfigAST(vector<AssignAST*>* _assigns) : assigns(_assigns) { }
-    ~ConfigAST() { delete_if(assigns); }
+    ConfigAST(AssignAST* _assign) : assign(_assign) { }
+    ~ConfigAST() { delete_if(assign); }
 };
 
 struct AssignAST {
@@ -197,8 +199,15 @@ struct ExpAST {
 
 struct PropertyAST {
     string* ident;
+    CtlAST* ctl;
+
+    PropertyAST(string* _ident, CtlAST* _ctl) : ident(_ident), ctl(_ctl) { }
+    ~PropertyAST() { delete_if(ident); delete_if(ctl); }
+};
+
+struct CtlAST {
     ExpAST* exp;
 
-    PropertyAST(string* _ident, ExpAST* _exp) : ident(_ident), exp(_exp) { }
-    ~PropertyAST() { delete_if(ident); delete_if(exp); }
+    CtlAST(ExpAST* _exp) : exp(_exp) { }
+    ~CtlAST() { delete_if(exp); }
 };

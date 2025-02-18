@@ -10,7 +10,7 @@
 - `"a"`: literal `a`.
 - `Comma<T>`: comma separated list of `T`, i.e. `T ("," T)*`.
 
-## Simplified Grammar
+## Grammar
 
 ```ebnf
 Spec ::= Section*
@@ -29,7 +29,9 @@ RouteEntry ::= Comma<IDENT> ":" IDENT ";"
 Protocol ::= "var" "(" Type ")" Comma<Assign> ";"
            | "thread" "(" Type ")" IDENT "{" Stmt* "}"
 Stmt ::= Breakpoint ":"
-       | [Exp] ";"
+       | Assign ";"
+       | ";"
+       | Primitive "(" Comma<Exp> ")" ";"
        | "temp" Comma<Assign> ";"
        | "if" "(" Exp ")" "{" Stmt* "}"
          ("elif" "(" Exp ")" "{" Stmt* "}")*
@@ -38,6 +40,8 @@ Stmt ::= Breakpoint ":"
        | "break" ";"
        | "continue" ";"
 Breakpoint ::= IDENT
+Primitive ::= "send" | "multicast" | "receive" | "wait"
+            | "exit" | "assert" | "print"
 Exp ::= "forall" IDENT "in" Exp ":" Exp
       | "exists" IDENT "in" Exp ":" Exp
       | Exp BinaryOp Exp
@@ -45,8 +49,12 @@ Exp ::= "forall" IDENT "in" Exp ":" Exp
       | "(" Exp ")"
       | Func "(" Comma<Exp> ")"
       | LiteralValue
-Func ::= "send" | "multicast" | "receive" | "wait"
-       | "exit" | "assert"
+      | ...
+Func ::= Primitive | ...
 Property ::= IDENT "=" Ctl ";"
-Ctl ::= Exp | "[]" Exp | "<>" Exp
+Ctl ::= Exp | "[]" Exp | "<>" Exp | ...
 ```
+
+Note that the above grammar only defines the basic syntax requirements of the language. Finer-grained constraints are enforced by the compiler. For example, `Exp` can be expanded to a primitive call, but it is not allowed in most expressions.
+
+TODO: reused TLA+ notations in prototype for literal values, operators and functions on them, expressions, and CTL formulas.
