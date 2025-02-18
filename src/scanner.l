@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <string>
 
-#include "sysy.tab.hpp"
+#include "parser.hpp"
 
 using namespace std;
 

@@ -1,7 +1,8 @@
 %glr-parser
 
-%{
+%code requires {
 
+#include <iostream>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -16,7 +17,7 @@ using PA_VE_VVS = pair<vector<ExpAST*>*, vector<vector<StmtAST*>*>*>*;
 
 int yylex();
 
-%}
+}
 
 %parse-param { SpecAST*& ast }
 
@@ -230,3 +231,8 @@ Ctl
     ;
 
 %%
+
+template <typename T>
+void yyerror(const T* ast, const char* s) {
+    cerr << "error: " << s << endl;
+}
