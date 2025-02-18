@@ -41,6 +41,7 @@ Identifier    [a-zA-Z_][a-zA-Z0-9_]*
 "temp"          { return TEMP; }
 
 "if"            { return IF; }
+"elif"          { return ELIF; }
 "else"          { return ELSE; }
 "while"         { return WHILE; }
 "break"         { return BREAK; }

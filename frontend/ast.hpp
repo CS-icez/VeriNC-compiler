@@ -150,12 +150,16 @@ struct ProtocolAST {
 struct StmtAST {
     enum Rule {
         Breakpoint,
-        Exp,
+        Assign,
+        Null,
+        PrimCall,
         Temp,
         If,
         While, Break, Continue,
     } rule;
-    string* breakpoint;
+    string* name;
+    AssignAST* assign;
+    vector<ExpAST*>* exps;
     vector<AssignAST*>* assigns;
     ExpAST* exp;
     vector<StmtAST*>* stmts;
@@ -163,15 +167,18 @@ struct StmtAST {
     vector<vector<StmtAST*>*>* vec_elif_stmts;
     vector<StmtAST*>* else_stmts;
 
-    StmtAST(Rule _rule, string* _breakpoint, vector<AssignAST*>* _assigns,
-        ExpAST* _exp, vector<StmtAST*>* _stmts, vector<ExpAST*>* _vec_elif_exp,
+    StmtAST(Rule _rule, string* _breakpoint, AssignAST* _assign,
+        vector<ExpAST*>* _exps, vector<AssignAST*>* _assigns, ExpAST* _exp,
+        vector<StmtAST*>* _stmts, vector<ExpAST*>* _vec_elif_exp,
         vector<vector<StmtAST*>*>* _vec_elif_stmts, vector<StmtAST*>* _else_stmts) :
-        rule(_rule), breakpoint(_breakpoint), assigns(_assigns), exp(_exp),
-            stmts(_stmts), vec_elif_exp(_vec_elif_exp), vec_elif_stmts(_vec_elif_stmts),
-            else_stmts(_else_stmts) { }
+        rule(_rule), name(_breakpoint), assign(_assign), exps(_exps),
+            assigns(_assigns), exp(_exp), stmts(_stmts), vec_elif_exp(_vec_elif_exp),
+            vec_elif_stmts(_vec_elif_stmts), else_stmts(_else_stmts) { }
 
     ~StmtAST() {
-        delete_if(breakpoint);
+        delete_if(name);
+        delete_if(assign);
+        delete_if(exps);
         delete_if(assigns);
         delete_if(exp);
         delete_if(stmts);
@@ -182,7 +189,7 @@ struct StmtAST {
 };
 
 struct ExpAST {
-    enum Rule { Primitive, TLA } rule;
+    enum Rule { PrimCall, TLA } rule;
     string* fn_name;
     vector<ExpAST*>* params;
     string* tla;

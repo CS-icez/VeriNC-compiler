@@ -31,7 +31,7 @@ Protocol ::= "var" "(" Type ")" Comma<Assign> ";"
 Stmt ::= Breakpoint ":"
        | Assign ";"
        | ";"
-       | Primitive "(" Comma<Exp> ")" ";"
+       | Func "(" Comma<Exp> ")" ";"
        | "temp" Comma<Assign> ";"
        | "if" "(" Exp ")" "{" Stmt* "}"
          ("elif" "(" Exp ")" "{" Stmt* "}")*
@@ -40,8 +40,8 @@ Stmt ::= Breakpoint ":"
        | "break" ";"
        | "continue" ";"
 Breakpoint ::= IDENT
-Primitive ::= "send" | "multicast" | "receive" | "wait"
-            | "exit" | "assert" | "print"
+Func ::= "send" | "multicast" | "receive" | "wait"
+       | "exit" | "assert" | "print" | ...
 Exp ::= "forall" IDENT "in" Exp ":" Exp
       | "exists" IDENT "in" Exp ":" Exp
       | Exp BinaryOp Exp
@@ -50,7 +50,6 @@ Exp ::= "forall" IDENT "in" Exp ":" Exp
       | Func "(" Comma<Exp> ")"
       | LiteralValue
       | ...
-Func ::= Primitive | ...
 Property ::= IDENT "=" Ctl ";"
 Ctl ::= Exp | "[]" Exp | "<>" Exp | ...
 ```
