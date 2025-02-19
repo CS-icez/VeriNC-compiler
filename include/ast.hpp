@@ -38,7 +38,7 @@ static void delete_if(const vector<T>* vec) {
 struct SpecAST {
     vector<SectionAST*>* sections;
 
-    SpecAST(vector<SectionAST*>* _sections) : sections(_sections) { }
+    explicit SpecAST(vector<SectionAST*>* _sections) : sections(_sections) { }
     ~SpecAST() { delete_if(sections); }
 };
 
@@ -49,29 +49,28 @@ struct SectionAST {
         Protocol,
         Property,
     } rule;
-    vector<ConfigAST*>*   config;
-    vector<TopologyAST*>* topology;
-    vector<ProtocolAST*>* protocol;
-    vector<PropertyAST*>* property;
+    vector<ConfigAST*>*   configs;
+    vector<TopologyAST*>* topologies;
+    vector<ProtocolAST*>* protocols;
+    vector<PropertyAST*>* properties;
 
-    SectionAST(Rule _rule, vector<ConfigAST*>* _config,
-        vector<TopologyAST*>* _topology, vector<ProtocolAST*>* _protocol,
-        vector<PropertyAST*>* _property) :
-        rule(_rule), config(_config), topology(_topology),
-            protocol(_protocol), property(_property) { }
-
+    SectionAST(Rule _rule, vector<ConfigAST*>* _configs,
+        vector<TopologyAST*>* _topologies, vector<ProtocolAST*>* _protocols,
+        vector<PropertyAST*>* _properties) :
+        rule(_rule), configs(_configs), topologies(_topologies),
+            protocols(_protocols), properties(_properties) { }
     ~SectionAST() {
-        delete_if(config);
-        delete_if(topology);
-        delete_if(protocol);
-        delete_if(property);
+        delete_if(configs);
+        delete_if(topologies);
+        delete_if(protocols);
+        delete_if(properties);
     }
 };
 
 struct ConfigAST {
     AssignAST* assign;
 
-    ConfigAST(AssignAST* _assign) : assign(_assign) { }
+    explicit ConfigAST(AssignAST* _assign) : assign(_assign) { }
     ~ConfigAST() { delete_if(assign); }
 };
 
@@ -116,7 +115,7 @@ struct TopologyAST {
 struct TypeAST {
     string* ident;
 
-    TypeAST(string* _ident) : ident(_ident) { }
+    explicit TypeAST(string* _ident) : ident(_ident) { }
     ~TypeAST() { delete_if(ident); }
 };
 
@@ -215,6 +214,6 @@ struct PropertyAST {
 struct CtlAST {
     ExpAST* exp;
 
-    CtlAST(ExpAST* _exp) : exp(_exp) { }
+    explicit CtlAST(ExpAST* _exp) : exp(_exp) { }
     ~CtlAST() { delete_if(exp); }
 };

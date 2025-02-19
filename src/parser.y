@@ -12,10 +12,11 @@
 
 using namespace std;
 
-using PA_E_VS = pair<ExpAST*, vector<StmtAST*>*>*;
-using PA_VE_VVS = pair<vector<ExpAST*>*, vector<vector<StmtAST*>*>*>*;
+using PA_E_VS = pair<ExpAST*, vector<StmtAST*>*>;
+using PA_VE_VVS = pair<vector<ExpAST*>*, vector<vector<StmtAST*>*>*>;
 
 int yylex();
+void yyerror(SpecAST*&, const char* s);
 
 }
 
@@ -48,8 +49,10 @@ int yylex();
     vector<AssignAST*>*     vec_Assign;
     vector<string*>*        vec_ident;
 
-    PA_E_VS   pa_E_vS;
-    PA_VE_VVS pa_vE_vvS;
+    vector<vector<string*>*>* vv_ident;
+
+    PA_E_VS*   pa_E_vS;
+    PA_VE_VVS* pa_vE_vvS;
 }
 
 %token <p_string> IDENT TLA
@@ -81,7 +84,7 @@ int yylex();
 %type <vec_Type>       Types
 %type <vec_Assign>     Assigns
 %type <vec_ident>      Idents
-%type <p_Topology>     Links
+%type <vv_ident>       Links
 
 %type <pa_vE_vvS> OptElifs Elifs
 %type <pa_E_vS>   Elif
@@ -90,24 +93,24 @@ int yylex();
 %%
 
 Spec
-    : Sections { ast = make_ast<SpecAST>($1); }
+    : Sections { $$ = make_ast<SpecAST>($1); }
     ;
 
 Sections
     : Sections Section { $1->push_back($2); $$ = $1; }
-    | Section { $$ = make_vec<SectionAST>($1); }
+    | Section { $$ = make_vec($1); }
     ;
 
 Section
-    : CONFIGURATION '{' Configs '}' { $$ = make_ast<SectionAST>(SectionAST::Configuration, $1, n3); }
-    | TOPOLOGY '{' Topologies '}' { $$ = make_ast<SectionAST>(SectionAST::Topology, n1, $1, n2); }
-    | PROTOCOL '{' Protocols '}' { $$ = make_ast<SectionAST>(SectionAST::Protocol, n2, $1, n1); }
-    | PROPERTY '{' Properties '}' { $$ = make_ast<SectionAST>(SectionAST::Property, n3, $1); }
+    : CONFIGURATION '{' Configs '}' { $$ = make_ast<SectionAST>(SectionAST::Configuration, $3, n3); }
+    | TOPOLOGY '{' Topologies '}' { $$ = make_ast<SectionAST>(SectionAST::Topology, n1, $3, n2); }
+    | PROTOCOL '{' Protocols '}' { $$ = make_ast<SectionAST>(SectionAST::Protocol, n2, $3, n1); }
+    | PROPERTY '{' Properties '}' { $$ = make_ast<SectionAST>(SectionAST::Property, n3, $3); }
     ;
 
 Configs
     : Configs Config { $1->push_back($2); $$ = $1; }
-    | Config { $$ = make_vec<ConfigAST>($1); }
+    | Config { $$ = make_vec($1); }
 
 Config
     : Assign ';' { $$ = make_ast<ConfigAST>($1); }
@@ -118,25 +121,25 @@ Assign
     ;
 
 Topologies
-    : Topologies Topology ';' { $1->push_back($2); $$ = $1; }
-    | Topology ';' { $$ = new vector<TopologyAST*>{$1}; }
+    : Topologies Topology { $1->push_back($2); $$ = $1; }
+    | Topology { $$ = make_vec($1); }
     ;
 
 Topology
     : NODETYPE Types ';' { $$ = make_ast<TopologyAST>(TopologyAST::NodeType, $2, n5); }
-    | Type Idents ';' { $$ = make_ast<TopologyAST>(TopologyAST::Type, n1, $1, $2, n3); }
+    | Type Idents ';' { $$ = make_ast<TopologyAST>(TopologyAST::Node, n1, $1, $2, n3); }
     | LINK Links ';' { $$ = make_ast<TopologyAST>(TopologyAST::Link, n3, $2, n2); }
-    | ROUTE '(' Idents ')' '{' RouteEntries '}' { $$ = make_ast<>(TopologyAST::Route, n4, $3, $6); }
+    | ROUTE '(' Idents ')' '{' RouteEntries '}' { $$ = make_ast<TopologyAST>(TopologyAST::Route, n4, $3, $6); }
     ;
 
 Types 
     : Types ',' Type { $1->push_back($3); $$ = $1; }
-    | Type { $$ = new vector<TypeAST*>{$1}; }
+    | Type { $$ = make_vec($1); }
     ;
 
 Idents
     : Idents ',' IDENT { $1->push_back($3); $$ = $1; }
-    | IDENT { $$ = new vector<string*>{$1}; }
+    | IDENT { $$ = make_vec($1); }
     ;
 
 Type
@@ -145,11 +148,11 @@ Type
 
 Links
     : Links DoubleMinus Idents { $1->push_back($3); $$ = $1; }
-    | Idents { $$ = new vector<vector<string*>>{$1}; }
+    | Idents { $$ = make_vec($1); }
 
 RouteEntries
     : RouteEntries RouteEntry { $1->push_back($2); $$ = $1; }
-    | RouteEntry { $$ = new vector<RouteEntryAST*>{$1}; }
+    | RouteEntry { $$ = make_vec($1); }
     ;
 
 RouteEntry
@@ -158,7 +161,7 @@ RouteEntry
 
 Protocols
     : Protocols Protocol { $1->push_back($2); $$ = $1; }
-    | Protocol { $$ = make_vec<ProtocolAST>($1); }
+    | Protocol { $$ = make_vec($1); }
     ;
 
 Protocol
@@ -168,7 +171,7 @@ Protocol
 
 Stmts
     : Stmts Stmt { $1->push_back($2); $$ = $1; }
-    | Stmt { $$ = make_vec<StmtAST>($1); }
+    | Stmt { $$ = make_vec($1); }
     ;
 
 Stmt
@@ -177,7 +180,10 @@ Stmt
     | ';' { $$ = make_ast<StmtAST>(StmtAST::Null, n9); }
     | IDENT '(' Exps ')' ';' { $$ = make_ast<StmtAST>(StmtAST::PrimCall, $1, n1, $3, n6); }
     | TEMP Assigns ';' { $$ = make_ast<StmtAST>(StmtAST::Temp, n3, $2, n5); }
-    | IF '(' Exp ')' '{' Stmts '}' OptElifs OptElse { $$ = make_ast<StmtAST>(StmtAST::If, n4, $3, $6, $8.first, $8.second, $9); }
+    | IF '(' Exp ')' '{' Stmts '}' OptElifs OptElse {
+        $$ = make_ast<StmtAST>(StmtAST::If, n4, $3, $6, $8->first, $8->second, $9);
+        if ($8 != nullptr) { delete $8; }
+    }
     | WHILE '(' Exp ')' '{' Stmts '}' { $$ = make_ast<StmtAST>(StmtAST::While, n4, $3, $6, n3); }
     | BREAK ';' { $$ = make_ast<StmtAST>(StmtAST::Break, n9); }
     | CONTINUE ';' { $$ = make_ast<StmtAST>(StmtAST::Continue, n9); }
@@ -189,8 +195,16 @@ OptElifs
     ;
 
 Elifs
-    : Elifs Elif { $1.first->push_back($2.first); $1.second->push_back($2.second); $$ = $1; }
-    | Elif { $$ = make_ast<PA_VE_VVS>(make_vec($1.first), make_vec($1.second)); }
+    : Elifs Elif {
+        $1->first->push_back($2->first);
+        $1->second->push_back($2->second);
+        $$ = $1;
+        delete $2;
+    }
+    | Elif {
+        $$ = make_ast<PA_VE_VVS>(make_vec($1->first), make_vec($1->second));
+        delete $1;
+    }
     ;
 
 Elif
@@ -204,12 +218,12 @@ OptElse
 
 Assigns 
     : Assigns ',' Assign { $1->push_back($3); $$ = $1; }
-    | Assign { $$ = make_vec<AssignAST>($1); }
+    | Assign { $$ = make_vec($1); }
     ;
 
 Exps
     : Exps ',' Exp { $1->push_back($3); $$ = $1; }
-    | Exp { $$ = make_vec<ExpAST>($1); }
+    | Exp { $$ = make_vec($1); }
     ;
 
 Exp
@@ -219,7 +233,7 @@ Exp
 
 Properties
     : Properties Property { $1->push_back($2); $$ = $1; }
-    | Property { $$ = make_vec<PropertyAST>($1); }
+    | Property { $$ = make_vec($1); }
     ;
 
 Property
@@ -232,7 +246,6 @@ Ctl
 
 %%
 
-template <typename T>
-void yyerror(const T* ast, const char* s) {
+void yyerror(SpecAST*&, const char* s) {
     cerr << "error: " << s << endl;
 }

@@ -31,17 +31,17 @@ T* make_ast(Args&&... args) {
     return std::apply(f, combined);
 }
 
-auto n1 = std::make_tuple(nullptr);
-auto n2 = std::tuple_cat(n1, n1);
-auto n3 = std::tuple_cat(n2, n1);
-auto n4 = std::tuple_cat(n3, n1);
-auto n5 = std::tuple_cat(n4, n1);
-auto n6 = std::tuple_cat(n5, n1);
-auto n7 = std::tuple_cat(n6, n1);
-auto n8 = std::tuple_cat(n7, n1);
-auto n9 = std::tuple_cat(n8, n1);
-
 template <typename T>
 std::vector<T*>* make_vec(T* arg) {
     return new std::vector<T*>{arg};
 }
+
+constexpr auto n1 = std::make_tuple(nullptr);
+constexpr auto n2 = std::tuple_cat(n1, n1);
+constexpr auto n3 = std::tuple_cat(n2, n1);
+constexpr auto n4 = std::tuple_cat(n3, n1);
+constexpr auto n5 = std::tuple_cat(n4, n1);
+constexpr auto n6 = std::tuple_cat(n5, n1);
+constexpr auto n7 = std::tuple_cat(n6, n1);
+constexpr auto n8 = std::tuple_cat(n7, n1);
+constexpr auto n9 = std::tuple_cat(n8, n1);
