@@ -41,8 +41,8 @@ Stmt ::= Breakpoint ":"
        | "break" ";"
        | "continue" ";"
 Breakpoint ::= IDENT
-Func ::= "send" | "multicast" | "receive" | "wait"
-       | "exit" | "assert" | "print" | ...
+Func ::= "send" | "send_m" | "multicast" | "receive"
+       | "wait" | "exit" | "assert" | "print" | ...
 Exp ::= "forall" IDENT "in" Exp ":" Exp
       | "exists" IDENT "in" Exp ":" Exp
       | "let" IDENT "=" Exp "in" Exp
