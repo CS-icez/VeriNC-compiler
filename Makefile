@@ -33,7 +33,7 @@ $(LEX_GEN): $(LEX_SRCS) $(YACC_GEN)
 
 $(YACC_GEN): $(YACC_SRCS)
 	@mkdir -p $(dir $@)
-	bison -d -o $@ $<
+	bison --debug -d -o $@ $<
 
 $(OBJ_DIR)/scanner.o: $(LEX_GEN)
 	@mkdir -p $(dir $@)

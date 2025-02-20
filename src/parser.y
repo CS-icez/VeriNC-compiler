@@ -4,6 +4,7 @@
 %code requires {
 
 #include <cstdio>
+#include <iostream>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -185,8 +186,12 @@ Stmt
     | IDENT '(' OptExps ')' ';' { $$ = make_ast<StmtAST>(StmtAST::PrimCall, $1, $3, n6); }
     | TEMP Assigns ';' { $$ = make_ast<StmtAST>(StmtAST::Temp, n2, $2, n5); }
     | IF '(' Exp ')' '{' Stmts '}' OptElifs OptElse {
-        $$ = make_ast<StmtAST>(StmtAST::If, n3, $3, $6, $8->first, $8->second, $9);
-        if ($8 != nullptr) { delete $8; }
+        if ($8 != nullptr) {
+            $$ = make_ast<StmtAST>(StmtAST::If, n3, $3, $6, $8->first, $8->second, $9);
+            delete $8;
+        } else {
+            $$ = make_ast<StmtAST>(StmtAST::If, n3, $3, $6, n2, $9);
+        }
     }
     | WHILE '(' Exp ')' '{' Stmts '}' { $$ = make_ast<StmtAST>(StmtAST::While, n3, $3, $6, n3); }
     | BREAK ';' { $$ = make_ast<StmtAST>(StmtAST::Break, n8); }
@@ -195,7 +200,7 @@ Stmt
 
 OptElifs
     : Elifs { $$ = $1; }
-    | { $$ = nullptr; }
+    | %empty { $$ = nullptr; }
     ;
 
 Elifs
@@ -217,7 +222,7 @@ Elif
 
 OptElse
     : ELSE '{' Stmts '}' { $$ = $3; }
-    | { $$ = nullptr; }
+    | %empty { $$ = nullptr; }
     ;
 
 Assigns 
@@ -227,7 +232,7 @@ Assigns
 
 OptExps
     : Exps { $$ = $1; }
-    | { $$ = nullptr; }
+    | %empty { $$ = nullptr; }
     ;
 
 Exps

@@ -67,7 +67,7 @@ protocol {
             temp pkt = receive();
             wait($pending # {}$);
             temp i = $MinElem(pending)$;
-            wait($requests[i] \notin Seq2Set(__net_buf[SW])$)
+            wait($requests[i] \notin Seq2Set(__net_buf[SW])$);
             send($requests[pkt.psn]$);
         }
     }
