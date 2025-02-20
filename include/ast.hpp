@@ -128,20 +128,24 @@ struct RouteEntryAST {
 };
 
 struct ProtocolAST {
-    enum Rule { Var, Thread } rule;
+    enum Rule { Var, Fn, Thread } rule;
     TypeAST* type;
     vector<AssignAST*>* assigns;
-    string* thread_name;
+    string* name;
+    vector<string*>* args;
+    ExpAST* exp;
     vector<StmtAST*>* stmts;
 
     ProtocolAST(Rule _rule, TypeAST* _type, vector<AssignAST*>* _assigns,
-        string* _thread_name, vector<StmtAST*>* _stmts) :
-        rule(_rule), type(_type), assigns(_assigns), thread_name(_thread_name),
-            stmts(_stmts) { }
+        string* _name, vector<string*>* _args, ExpAST* _exp, vector<StmtAST*>* _stmts) :
+        rule(_rule), type(_type), assigns(_assigns), name(_name),
+            args(_args), exp(_exp), stmts(_stmts) { }
     ~ProtocolAST() {
         delete_if(type);
         delete_if(assigns);
-        delete_if(thread_name);
+        delete_if(name);
+        delete_if(args);
+        delete_if(exp);
         delete_if(stmts);
     }
 };

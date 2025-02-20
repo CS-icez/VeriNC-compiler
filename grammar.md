@@ -27,6 +27,7 @@ Topology ::= "nodetype" Comma<Type> ";"
 Type ::= IDENT
 RouteEntry ::= Comma<IDENT> ":" IDENT ";"
 Protocol ::= "var" "(" Type ")" Comma<Assign> ";"
+           | "fn" IDENT "(" Comma<IDENT> ")" "=" Exp ";"
            | "thread" "(" Type ")" IDENT "{" Stmt* "}"
 Stmt ::= Breakpoint ":"
        | Assign ";"
@@ -44,11 +45,13 @@ Func ::= "send" | "multicast" | "receive" | "wait"
        | "exit" | "assert" | "print" | ...
 Exp ::= "forall" IDENT "in" Exp ":" Exp
       | "exists" IDENT "in" Exp ":" Exp
+      | "let" IDENT "=" Exp "in" Exp
       | Exp BinaryOp Exp
       | UnaryOp Exp
       | "(" Exp ")"
       | Func "(" Comma<Exp> ")"
       | LiteralValue
+      | "self"
       | ...
 Property ::= IDENT "=" Ctl ";"
 Ctl ::= Exp | "[]" Exp | "<>" Exp | ...
