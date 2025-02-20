@@ -117,7 +117,8 @@ Config
     ;
 
 Assign
-    : IDENT '=' Exp { $$ = make_ast<AssignAST>($1, $3); }
+    : IDENT '=' Exp { $$ = make_ast<AssignAST>($1, n1, $3); }
+    | IDENT '[' Exps ']' '=' Exp { $$ = make_ast<AssignAST>($1, $3, $6); }
     ;
 
 Topologies
@@ -177,18 +178,18 @@ Stmts
     ;
 
 Stmt
-    : IDENT ':' { $$ = make_ast<StmtAST>(StmtAST::Breakpoint, $1, n8); }
-    | Assign ';' { $$ = make_ast<StmtAST>(StmtAST::Assign, n1, $1, n7); }
-    | ';' { $$ = make_ast<StmtAST>(StmtAST::Null, n9); }
-    | IDENT '(' Exps ')' ';' { $$ = make_ast<StmtAST>(StmtAST::PrimCall, $1, n1, $3, n6); }
-    | TEMP Assigns ';' { $$ = make_ast<StmtAST>(StmtAST::Temp, n3, $2, n5); }
+    : IDENT ':' { $$ = make_ast<StmtAST>(StmtAST::Breakpoint, $1, n7); }
+    | Assigns ';' { $$ = make_ast<StmtAST>(StmtAST::Assign, n2, $1, n5); }
+    | ';' { $$ = make_ast<StmtAST>(StmtAST::Null, n8); }
+    | IDENT '(' Exps ')' ';' { $$ = make_ast<StmtAST>(StmtAST::PrimCall, $1, $3, n6); }
+    | TEMP Assigns ';' { $$ = make_ast<StmtAST>(StmtAST::Temp, n2, $2, n5); }
     | IF '(' Exp ')' '{' Stmts '}' OptElifs OptElse {
-        $$ = make_ast<StmtAST>(StmtAST::If, n4, $3, $6, $8->first, $8->second, $9);
+        $$ = make_ast<StmtAST>(StmtAST::If, n3, $3, $6, $8->first, $8->second, $9);
         if ($8 != nullptr) { delete $8; }
     }
-    | WHILE '(' Exp ')' '{' Stmts '}' { $$ = make_ast<StmtAST>(StmtAST::While, n4, $3, $6, n3); }
-    | BREAK ';' { $$ = make_ast<StmtAST>(StmtAST::Break, n9); }
-    | CONTINUE ';' { $$ = make_ast<StmtAST>(StmtAST::Continue, n9); }
+    | WHILE '(' Exp ')' '{' Stmts '}' { $$ = make_ast<StmtAST>(StmtAST::While, n3, $3, $6, n3); }
+    | BREAK ';' { $$ = make_ast<StmtAST>(StmtAST::Break, n8); }
+    | CONTINUE ';' { $$ = make_ast<StmtAST>(StmtAST::Continue, n8); }
     ;
 
 OptElifs

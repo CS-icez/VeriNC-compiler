@@ -19,7 +19,7 @@ Section ::= "configuration" "{" Config* "}"
           | "protocol" "{" Protocol* "}"
           | "property" "{" Property* "}"
 Config ::= Assign ";"
-Assign ::= IDENT "=" Exp
+Assign ::= IDENT ("[" Comma<Exp> "]")? "=" Exp
 Topology ::= "nodetype" Comma<Type> ";"
            | Type Comma<IDENT> ";"
            | "link" Comma<IDENT> ("--" Comma<IDENT>)* ";"
@@ -30,7 +30,7 @@ Protocol ::= ("var" | "const") "(" (Type | "all") ")" Comma<Assign> ";"
            | "fn" IDENT "(" Comma<IDENT> ")" "=" Exp ";"
            | "thread" "(" Type ")" IDENT "{" Stmt* "}"
 Stmt ::= Breakpoint ":"
-       | Assign ";"
+       | Comma<Assign> ";"
        | ";"
        | Func "(" Comma<Exp> ")" ";"
        | "temp" Comma<Assign> ";"
@@ -50,6 +50,7 @@ Exp ::= "forall" IDENT "in" Exp ":" Exp
       | UnaryOp Exp
       | "(" Exp ")"
       | Func "(" Comma<Exp> ")"
+      | IDENT ("[" Comma<Exp> "]")?
       | LiteralValue
       | "self"
       | ...
@@ -57,6 +58,6 @@ Property ::= IDENT "=" Ctl ";"
 Ctl ::= Exp | "[]" Exp | "<>" Exp | ...
 ```
 
-Note that the above grammar only defines the basic syntax requirements of the language. Finer-grained constraints are enforced by the compiler. For example, `Exp` can be expanded to a primitive call, but it is not allowed in most expressions.
+Note that the above grammar only defines the basic syntax requirements of the language. Finer-grained constraints are enforced by the compiler. For example, `Exp` can be expanded to a primitive call, but it is not allowed in most expressions. The left hand side of `Assign` can be expanded to a dictionary element access, but it is only allowed in assignment statements.
 
 TODO: reused TLA+ notations in prototype for literal values, operators and functions on them, expressions, and CTL formulas.
