@@ -13,7 +13,7 @@ using namespace std;
 
 %}
 
-TLA           "$([^$]*?)$"
+TLA           \$[^\$]*\$
 
 WhiteSpace    [ \t\n\r]*
 LineComment   "//".*

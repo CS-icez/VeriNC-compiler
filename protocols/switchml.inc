@@ -1,8 +1,8 @@
-config {
-    MAX_LOSS = 0
-    MAX_OUT_OF_ORDER = 0
-    AGG_SIZE = 1
-    REQ_NUM = 2
+configuration {
+    MAX_LOSS = $0$;
+    MAX_OUT_OF_ORDER = $0$;
+    AGG_SIZE = $1$;
+    REQ_NUM = $2$;
 }
 
 topology {
@@ -13,7 +13,7 @@ topology {
 }
 
 protocol {
-    const(all) REQ_SET = $0..(REQ_NUM - 1)$, AGG_SET == $0..(AGG_SIZE - 1)$;
+    const(all) REQ_SET = $0..(REQ_NUM - 1)$, AGG_SET = $0..(AGG_SIZE - 1)$;
     var(all) active_workers = $CLIENT_SET$;
 
     var(Client) requests = $[i \in REQ_SET |-> [

@@ -1,8 +1,9 @@
 %glr-parser
+%define parse.error detailed
 
 %code requires {
 
-#include <iostream>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -79,7 +80,7 @@ void yyerror(SpecAST*&, const char* s);
 %type <vec_RouteEntry> RouteEntries
 %type <vec_Protocol>   Protocols
 %type <vec_Stmt>       Stmts
-%type <vec_Exp>        Exps
+%type <vec_Exp>        Exps OptExps
 %type <vec_Property>   Properties
 %type <vec_Type>       Types
 %type <vec_Assign>     Assigns
@@ -181,7 +182,7 @@ Stmt
     : IDENT ':' { $$ = make_ast<StmtAST>(StmtAST::Breakpoint, $1, n7); }
     | Assigns ';' { $$ = make_ast<StmtAST>(StmtAST::Assign, n2, $1, n5); }
     | ';' { $$ = make_ast<StmtAST>(StmtAST::Null, n8); }
-    | IDENT '(' Exps ')' ';' { $$ = make_ast<StmtAST>(StmtAST::PrimCall, $1, $3, n6); }
+    | IDENT '(' OptExps ')' ';' { $$ = make_ast<StmtAST>(StmtAST::PrimCall, $1, $3, n6); }
     | TEMP Assigns ';' { $$ = make_ast<StmtAST>(StmtAST::Temp, n2, $2, n5); }
     | IF '(' Exp ')' '{' Stmts '}' OptElifs OptElse {
         $$ = make_ast<StmtAST>(StmtAST::If, n3, $3, $6, $8->first, $8->second, $9);
@@ -224,13 +225,18 @@ Assigns
     | Assign { $$ = make_vec($1); }
     ;
 
+OptExps
+    : Exps { $$ = $1; }
+    | { $$ = nullptr; }
+    ;
+
 Exps
     : Exps ',' Exp { $1->push_back($3); $$ = $1; }
     | Exp { $$ = make_vec($1); }
     ;
 
 Exp
-    : IDENT '(' Exps ')' { $$ = make_ast<ExpAST>(ExpAST::PrimCall, $1, $3, n1); }
+    : IDENT '(' OptExps ')' { $$ = make_ast<ExpAST>(ExpAST::PrimCall, $1, $3, n1); }
     | TLA { $$ = make_ast<ExpAST>(ExpAST::TLA, n2, $1); }
     ;
 
@@ -250,5 +256,10 @@ Ctl
 %%
 
 void yyerror(SpecAST*&, const char* s) {
-    cerr << "error: " << s << endl;
+    extern int yylineno;
+    extern char *yytext;
+
+    fprintf(stderr, "Error at line %d: %s\n", yylineno, s);
+    fprintf(stderr, "Near token: '%s'\n", yytext);
+    fprintf(stderr, "error: %s\n", s);
 }

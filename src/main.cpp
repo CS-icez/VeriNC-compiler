@@ -11,7 +11,7 @@ extern FILE* yyin;
 extern int yyparse(SpecAST*& ast);
 
 int main(int argc, char* argv[]) {
-	assert(argc == 1);
+	assert(argc == 2);
 
 	yyin = fopen(argv[1], "r");
 	assert(yyin);

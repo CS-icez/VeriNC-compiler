@@ -32,7 +32,7 @@ Protocol ::= ("var" | "const") "(" (Type | "all") ")" Comma<Assign> ";"
 Stmt ::= Breakpoint ":"
        | Comma<Assign> ";"
        | ";"
-       | Func "(" Comma<Exp> ")" ";"
+       | PrimCall ";"
        | "temp" Comma<Assign> ";"
        | "if" "(" Exp ")" "{" Stmt* "}"
          ("elif" "(" Exp ")" "{" Stmt* "}")*
@@ -41,8 +41,9 @@ Stmt ::= Breakpoint ":"
        | "break" ";"
        | "continue" ";"
 Breakpoint ::= IDENT
-Func ::= "send" | "send_m" | "multicast" | "receive"
-       | "wait" | "exit" | "assert" | "print" | ...
+PrimCall ::= Primitive "(" Comma<Exp>? ")"
+Primitive ::= "send" | "send_m" | "multicast" | "receive"
+            | "wait" | "exit" | "assert" | "print" | ...
 Exp ::= "forall" IDENT "in" Exp ":" Exp
       | "exists" IDENT "in" Exp ":" Exp
       | "let" IDENT "=" Exp "in" Exp
@@ -50,6 +51,7 @@ Exp ::= "forall" IDENT "in" Exp ":" Exp
       | UnaryOp Exp
       | "(" Exp ")"
       | Func "(" Comma<Exp> ")"
+      | PrimCall
       | IDENT ("[" Comma<Exp> "]")?
       | LiteralValue
       | "self"

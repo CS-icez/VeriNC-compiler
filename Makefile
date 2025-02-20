@@ -29,7 +29,7 @@ $(OBJ_DIR)/%.o: src/%.cpp
 
 $(LEX_GEN): $(LEX_SRCS) $(YACC_GEN)
 	@mkdir -p $(dir $@)
-	flex -o $@ $<
+	flex -d -o $@ $<
 
 $(YACC_GEN): $(YACC_SRCS)
 	@mkdir -p $(dir $@)
