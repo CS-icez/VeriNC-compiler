@@ -26,7 +26,7 @@ Topology ::= "nodetype" Comma<Type> ";"
            | "route" "(" Comma<IDENT> ")" "{" RouteEntry* "}"
 Type ::= IDENT
 RouteEntry ::= Comma<IDENT> ":" IDENT ";"
-Protocol ::= "var" "(" Type ")" Comma<Assign> ";"
+Protocol ::= ("var" | "const") "(" (Type | "all") ")" Comma<Assign> ";"
            | "fn" IDENT "(" Comma<IDENT> ")" "=" Exp ";"
            | "thread" "(" Type ")" IDENT "{" Stmt* "}"
 Stmt ::= Breakpoint ":"

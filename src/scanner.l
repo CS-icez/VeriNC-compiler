@@ -37,6 +37,7 @@ Identifier    [a-zA-Z_][a-zA-Z0-9_]*
 "--"            { return DoubleMinus; }
 "route"         { return ROUTE; }
 "var"           { return VAR; }
+"const"         { return CONST; }
 "fn"            { return FN; }
 "thread"        { return THREAD; }
 "temp"          { return TEMP; }

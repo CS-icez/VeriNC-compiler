@@ -57,7 +57,7 @@ void yyerror(SpecAST*&, const char* s);
 
 %token <p_string> IDENT TLA
 %token <p_string> CONFIGURATION TOPOLOGY PROTOCOL PROPERTY NODETYPE LINK DoubleMinus
-    ROUTE VAR FN THREAD TEMP
+    ROUTE VAR CONST FN THREAD TEMP
 %token <p_string> IF ELIF ELSE WHILE BREAK CONTINUE
 
 %type <p_Spec>       Spec
@@ -166,6 +166,7 @@ Protocols
 
 Protocol
     : VAR '(' Type ')' Assigns ';' { $$ = make_ast<ProtocolAST>(ProtocolAST::Var, $3, $5, n4); }
+    | CONST '(' Type ')' Assigns ';' { $$ = make_ast<ProtocolAST>(ProtocolAST::Const, $3, $5, n4); }
     | FN IDENT '(' Idents ')' '=' Exp ';' { $$ = make_ast<ProtocolAST>(ProtocolAST::Fn, n2, $2, $4, $7, n1); }
     | THREAD '(' Type ')' IDENT '{' Stmts '}' { $$ = make_ast<ProtocolAST>(ProtocolAST::Thread, $3, n1, $5, n2, $7); }
     ;

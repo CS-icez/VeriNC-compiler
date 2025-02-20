@@ -128,7 +128,7 @@ struct RouteEntryAST {
 };
 
 struct ProtocolAST {
-    enum Rule { Var, Fn, Thread } rule;
+    enum Rule { Var, Const, Fn, Thread } rule;
     TypeAST* type;
     vector<AssignAST*>* assigns;
     string* name;
