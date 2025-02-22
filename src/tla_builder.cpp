@@ -15,10 +15,17 @@ namespace std {
     };
 }
 
-static void check(bool cond, const string& msg) {
+void TLABuilder::check(bool cond, const string& msg) {
     if (!cond) {
         throw std::runtime_error(msg);
     }
+}
+
+void TLABuilder::check_not_reserved(const string& name) {
+    check(
+        !tla_reserved.contains(name) && !our_reserved.contains(name),
+        format("Name {} is a reserved word", name)
+    );
 }
 
 auto TLABuilder::build() -> pair<string, string> {
@@ -75,6 +82,7 @@ void TLABuilder::analyze(ConfigAST* config) {
     check(
         !globalNames.contains(name),
         format("Declare name {} twice in global scope", name));
+    check_not_reserved(name);
     globalNames.insert(name);
     check(
         assign->keys == nullptr,
@@ -93,17 +101,27 @@ void TLABuilder::analyze(TopologyAST* topology) {
         case TopologyAST::NodeType:
             // Collect node types.
             for (auto type : *topology->types) {
-                // TODO: check not reserved words.
+                check(
+                    !nodetypes.contains(*type->ident),
+                    format("Declare node type {} twice", *type->ident)
+                );
+                check_not_reserved(*type->ident);
                 nodetypes.insert(*type->ident);
             }
             break;
         case TopologyAST::Node: {
             // Collect nodes.
             auto type = *topology->type->ident;
-            check(nodetypes.contains(type), format("Declare nodes of unknown node type {}", type));
+            check(
+                nodetypes.contains(type),
+                format("Declare nodes of unknown node type {}", type)
+            );
             for (auto node : *topology->nodes) {
-                check(!nodes.contains(*node), format("Declare node {} twice", *node));
-                // TODO: check not reserved words.
+                check(
+                    !nodes.contains(*node),
+                    format("Declare node {} twice", *node)
+                );
+                check_not_reserved(*node);
                 nodes.insert(*node);
                 type2nodes[type].insert(*node);
 
@@ -123,8 +141,14 @@ void TLABuilder::analyze(TopologyAST* topology) {
                 auto dsts = (*topology->vec_nodes)[i + 1];
                 for (auto src : *srcs) {
                     for (auto dst : *dsts) {
-                        check(nodes.contains(*src), format("Declare a link with unknown node {}", *src));
-                        check(nodes.contains(*dst), format("Declare a link with unknown node {}", *dst));
+                        check(
+                            nodes.contains(*src),
+                            format("Declare a link with unknown node {}", *src)
+                        );
+                        check(
+                            nodes.contains(*dst),
+                            format("Declare a link with unknown node {}", *dst)
+                        );
                         check(*src != *dst, format("Declare a self-link of {}", *src));
                         links[*src].insert(*dst);
                         links[*dst].insert(*src);
@@ -135,16 +159,31 @@ void TLABuilder::analyze(TopologyAST* topology) {
         case TopologyAST::Route:
             // Check the existence of sources.
             for (auto src : *topology->srcs) {
-                check(nodes.contains(*src), format("Declare a route with unknown source {}", *src));
+                check(
+                    nodes.contains(*src),
+                    format("Declare a route with unknown source {}", *src)
+                );
             }
             // Collect routes.
             for (auto entry : *topology->entries) {
-                check(nodes.contains(*entry->next), format("Declare a route with unknown next-hop {}", *entry->next));
+                check(
+                    nodes.contains(*entry->next),
+                    format("Declare a route with unknown next-hop {}", *entry->next)
+                );
                 for (auto dst : *entry->dsts) {
-                    check(nodes.contains(*dst), format("Declare a route with unknown destination {}", *dst));
+                    check(
+                        nodes.contains(*dst),
+                        format("Declare a route with unknown destination {}", *dst)
+                    );
                     for (auto src : *topology->srcs) {
-                        check(*src != *dst, format("Declare a route with the same source and destination {}", *src));
-                        check(nexts[*src][*dst] == null, format("Declare the route from {} to {} twice", *src, *dst));
+                        check(
+                            *src != *dst,
+                            format("Declare a route with the same source and destination {}", *src)
+                        );
+                        check(
+                            nexts[*src][*dst] == null,
+                            format("Declare the route from {} to {} twice", *src, *dst)
+                        );
                         nexts[*src][*dst] = *entry->next;
                     }
                 }
@@ -210,6 +249,8 @@ void TLABuilder::analyze(ProtocolAST* protocol) {
                 !globalNames.contains(name),
                 format("Declare name {} twice in global scope", name)
             );
+            globalNames.insert(name);
+            check_not_reserved(name);
             auto exp = protocol->exp;
             check(
                 exp->rule == ExpAST::TLA,
@@ -235,6 +276,7 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
     }
 
     auto name = *assign->ident;
+    check_not_reserved(name);
     if (is_global) {
         check(
             !type2vars[type].contains(name),
@@ -276,6 +318,7 @@ void TLABuilder::analyzeThread(const string& type, const string& name,
         !globalNames.contains(name),
         format("Declare name {} twice in global scope", name)
     );
+    check_not_reserved(name);
     globalNames.insert(name);
     type2threads[type][name] = stmts;
 

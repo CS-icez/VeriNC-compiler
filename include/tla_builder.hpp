@@ -23,8 +23,34 @@ private:
     SpecAST* spec;
     string module_name;
 
-    const string null = "null";
-    const string all = "all";
+    static inline const string null = "null";
+    static inline const string all = "all";
+
+    // https://github.com/DistributedPlusCal/DistributedPlusCal/blob/master/tlatools/TLA%2B%20Tools/pcal/PlusCal.tla
+    // This list is not actually complete. There are other reserved words like `Init`.
+    static inline const uset<string> tla_reserved{
+        "ASSUME", "ASSUMPTION", "AXIOM", "CASE", "CHOOSE",
+        "CONSTANT", "CONSTANTS", "DOMAIN", "ELSE", "ENABLED",
+        "EXCEPT", "EXTENDS", "IF", "IN", "INSTANCE", "LET",
+        "LOCAL", "MODULE", "OTHER", "UNION", "SUBSET", "THEN",
+        "THEOREM", "UNCHANGED", "VARIABLE", "VARIABLES", 
+        "WITH", "WF_", "SF_",
+        "assert", "begin", "call", "do", "either", "else",
+        "elsif", "end", "goto", "if", "macro", "or",
+        "print", "procedure", "process", "fair", "return", "skip",
+        "then", "variable", "variables", "while", "with"
+    };
+    static inline const uset<string> our_reserved{
+        "all", "null",
+        "configuration", "topology", "protocol", "property",
+        "nodetype", "node", "link", "route",
+        "var", "const", "fn", "thread",
+        "temp", "if", "elif", "else", "while", "break", "continue",
+        "send", "send_m", "multicast", "receive",
+        "wait", "exit", "assert", "print",
+        "forall", "exists", "in", "let",
+        "self"
+    };
 
     uset<string> globalNames;
     vector<pair<string, string*>> configs;
@@ -42,6 +68,8 @@ private:
     vector<tuple<string, vector<string*>*, string*>> fns;
     umap<string, umap<string, vector<StmtAST*>*>> type2threads;
 
+    void check(bool cond, const string& msg);
+    void check_not_reserved(const string& name);
 
     void analyze(SpecAST* spec);
     void analyze(SectionAST* section);

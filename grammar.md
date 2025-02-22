@@ -38,8 +38,6 @@ Stmt ::= Breakpoint ":"
          ("elif" "(" Exp ")" "{" Stmt* "}")*
          ("else" "{" Stmt* "}")?
        | "while" "(" Exp ")" "{" Stmt* "}"
-       | "break" ";"
-       | "continue" ";"
 Breakpoint ::= IDENT
 PrimCall ::= Primitive "(" Comma<Exp>? ")"
 Primitive ::= "send" | "send_m" | "multicast" | "receive"
