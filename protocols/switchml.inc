@@ -7,9 +7,10 @@ configuration {
 
 topology {
     nodetype Client, Switch;
-    Client c1, c2, c3;
-    Switch sw;
+    node(Client) c1, c2, c3;
+    node(Switch) sw;
     link c1, c2, c3 -- sw;
+    route(c1) { c2, c3 : sw; }
 }
 
 protocol {

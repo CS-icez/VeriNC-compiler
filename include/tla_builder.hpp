@@ -16,6 +16,7 @@ class TLABuilder {
 public:
     TLABuilder(SpecAST* _spec, const string& _module_name) :
         spec(_spec), module_name(_module_name) { }
+    ~TLABuilder() { delete spec; }
 
     auto build() -> pair<string, string>;
 
@@ -72,7 +73,6 @@ private:
     void check_not_reserved(const string& name);
 
     void analyze(SpecAST* spec);
-    void analyze(SectionAST* section);
     void analyze(ConfigAST* config);
     void analyze(TopologyAST* topology);
     void analyze(TypeAST* type);

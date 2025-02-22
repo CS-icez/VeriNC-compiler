@@ -25,11 +25,14 @@ int main(int argc, char* argv[]) {
 	assert(!ret);
 	fclose(yyin);
 
+	std::cout << "Parsed successfully" << std::endl;
+
 	auto file = string(argv[1]);
 	auto module = file.substr(0, file.find_last_of('.'));
 	TLABuilder builder(ast, module);
 	auto [tla, cfg] = builder.build();
-	delete ast;
+
+	std::cout << "Built successfully" << std::endl;
 
 	ofstream tla_out(string("tla/") + module + ".tla");
 	tla_out << tla << std::endl;

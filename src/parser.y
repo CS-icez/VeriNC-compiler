@@ -22,7 +22,7 @@ void yyerror(SpecAST*&, const char* s);
 
 }
 
-%parse-param { SpecAST*& ast }
+%parse-param { SpecAST*& spec }
 
 %union {
     string*        p_string;
@@ -58,9 +58,11 @@ void yyerror(SpecAST*&, const char* s);
 }
 
 %token <p_string> IDENT TLA
-%token <p_string> CONFIGURATION TOPOLOGY PROTOCOL PROPERTY NODETYPE LINK DoubleMinus
-    ROUTE VAR CONST FN THREAD TEMP
-%token <p_string> IF ELIF ELSE WHILE BREAK CONTINUE
+%token <p_string>
+    CONFIGURATION TOPOLOGY PROTOCOL PROPERTY
+    NODETYPE NODE LINK DoubleMinus ROUTE
+    VAR CONST FN THREAD TEMP
+    IF ELIF ELSE WHILE BREAK CONTINUE
 
 %type <p_Spec>       Spec
 %type <p_Section>    Section
@@ -95,7 +97,7 @@ void yyerror(SpecAST*&, const char* s);
 %%
 
 Spec
-    : Sections { $$ = make_ast<SpecAST>($1); }
+    : Sections { spec = make_ast<SpecAST>($1); }
     ;
 
 Sections
@@ -130,7 +132,7 @@ Topologies
 
 Topology
     : NODETYPE Types ';' { $$ = make_ast<TopologyAST>(TopologyAST::NodeType, $2, n5); }
-    | Type Idents ';' { $$ = make_ast<TopologyAST>(TopologyAST::Node, n1, $1, $2, n3); }
+    | NODE '(' Type ')' Idents ';' { $$ = make_ast<TopologyAST>(TopologyAST::Node, n1, $3, $5, n3); }
     | LINK Links ';' { $$ = make_ast<TopologyAST>(TopologyAST::Link, n3, $2, n2); }
     | ROUTE '(' Idents ')' '{' RouteEntries '}' { $$ = make_ast<TopologyAST>(TopologyAST::Route, n4, $3, $6); }
     ;

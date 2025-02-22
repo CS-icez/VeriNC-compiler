@@ -21,7 +21,7 @@ Section ::= "configuration" "{" Config* "}"
 Config ::= Assign ";"
 Assign ::= IDENT ("[" Comma<Exp> "]")? "=" Exp
 Topology ::= "nodetype" Comma<Type> ";"
-           | Type Comma<IDENT> ";"
+           | "node" "(" Type ")" Comma<IDENT> ";"
            | "link" Comma<IDENT> ("--" Comma<IDENT>)* ";"
            | "route" "(" Comma<IDENT> ")" "{" RouteEntry* "}"
 Type ::= IDENT

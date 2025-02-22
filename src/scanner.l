@@ -33,6 +33,7 @@ Identifier    [a-zA-Z_][a-zA-Z0-9_]*
 "protocol"      { return PROTOCOL; }
 "property"      { return PROPERTY; }
 "nodetype"      { return NODETYPE; }
+"node"          { return NODE; }
 "link"          { return LINK; }
 "--"            { return DoubleMinus; }
 "route"         { return ROUTE; }

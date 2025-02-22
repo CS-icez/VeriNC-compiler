@@ -1,5 +1,6 @@
 #include "tla_builder.hpp"
 #include <format>
+#include <iostream>
 #include <stdexcept>
 using std::format;
 using std::pair;
@@ -34,42 +35,38 @@ auto TLABuilder::build() -> pair<string, string> {
 }
 
 void TLABuilder::analyze(SpecAST* spec) {
-    for (auto section : *spec->sections) {
-        analyze(section);
-    }
-}
-
-void TLABuilder::analyze(SectionAST* section) {
     vector<ProtocolAST*> protocols;
 
-    // `protocol` sections will be analyzed at last.
-    switch (section->rule) {
-        case SectionAST::Configuration:
-            for (auto config : *section->configs) {
-                analyze(config);
-            }
-            break;
-        case SectionAST::Topology:
-            for (auto topology : *section->topologies) {
-                analyze(topology);
-            }
-            break;
-        case SectionAST::Protocol:
-            for (auto protocol : *section->protocols) {
-                protocols.push_back(protocol);
-            }
-            break;
-        case SectionAST::Property:
-            for (auto property : *section->properties) {
-                analyze(property);
-            }
-            break;
+    for (auto section : *spec->sections) {
+        switch (section->rule) {
+            case SectionAST::Configuration:
+                for (auto config : *section->configs) {
+                    analyze(config);
+                }
+                break;
+            case SectionAST::Topology:
+                for (auto topology : *section->topologies) {
+                    analyze(topology);
+                }
+                break;
+            case SectionAST::Protocol:
+                for (auto protocol : *section->protocols) {
+                    // `protocol` sections will be analyzed at last.
+                    protocols.push_back(protocol);
+                }
+                break;
+            case SectionAST::Property:
+                for (auto property : *section->properties) {
+                    analyze(property);
+                }
+                break;
+        }
     }
 
     // Complete routing tables.
     completeNexts();
 
-    // Analyze protocols.
+    // Analyze protocol sections.
     for (auto protocol : protocols) {
         analyze(protocol);
     }
@@ -152,6 +149,8 @@ void TLABuilder::analyze(TopologyAST* topology) {
                         check(*src != *dst, format("Declare a self-link of {}", *src));
                         links[*src].insert(*dst);
                         links[*dst].insert(*src);
+                        nexts[*src][*dst] = *dst;
+                        nexts[*dst][*src] = *src;
                     }
                 }
             }
@@ -181,6 +180,10 @@ void TLABuilder::analyze(TopologyAST* topology) {
                             format("Declare a route with the same source and destination {}", *src)
                         );
                         check(
+                            !links[*src].contains(*dst),
+                            format("Declare a route from {} to {} but they are directly connected", *src, *dst)
+                        );
+                        check(
                             nexts[*src][*dst] == null,
                             format("Declare the route from {} to {} twice", *src, *dst)
                         );
@@ -194,15 +197,18 @@ void TLABuilder::analyze(TopologyAST* topology) {
 
 void TLABuilder::completeNexts() {
     uset<pair<string, string>> visited;
+    std::cout << "Completing routing tables..." << std::endl;
     for (auto src : nodes) {
         for (auto dst : nodes) {
             findNext(src, dst, visited);
         }
     }
+    std::cout << "Routing tables completed" << std::endl;
 }
 
 string TLABuilder::findNext(const string& src, const string& dst,
     uset<pair<string, string>>& visited) {
+    // TODO: Guarantee correctness in theory.
     if (nexts[src][dst] != null) {
         return nexts[src][dst];
     }
@@ -211,6 +217,11 @@ string TLABuilder::findNext(const string& src, const string& dst,
     auto res = null;
     // Enumerate all possible next hops.
     for (const auto& next : links[src]) {
+        if (nexts[next][dst] != null) {
+            ++success_cnt;
+            res = nexts[next][dst];
+            continue;
+        }
         if (visited.contains({next, dst})) {
             continue;
         }
