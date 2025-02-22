@@ -23,7 +23,7 @@ static void check(bool cond, const string& msg) {
 
 auto TLABuilder::build() -> pair<string, string> {
     analyze(spec);
-    return {buildTLA(module_name), buildCFG()};
+    return {buildTLA(), buildCFG()};
 }
 
 void TLABuilder::analyze(SpecAST* spec) {
@@ -69,8 +69,23 @@ void TLABuilder::analyze(SectionAST* section) {
 }
 
 void TLABuilder::analyze(ConfigAST* config) {
-    // All configs are constants in TLA+.
-    constants.push_back(config->assign);
+    // Collect configuration.
+    auto assign = config->assign;
+    auto name = *assign->ident;
+    check(
+        !globalNames.contains(name),
+        format("Declare name {} twice in global scope", name));
+    globalNames.insert(name);
+    check(
+        assign->keys == nullptr,
+        format("LHS of configuration should be an identifier")
+    );
+    auto exp = assign->exp;
+    check(
+        exp->rule == ExpAST::TLA,
+        format("RHS of configuration {} should not involve primitive calls", name)
+    );
+    configs.emplace_back(name, exp->tla);
 }
 
 void TLABuilder::analyze(TopologyAST* topology) {
@@ -177,26 +192,102 @@ string TLABuilder::findNext(const string& src, const string& dst,
 }
 
 void TLABuilder::analyze(ProtocolAST* protocol) {
-    // TODO: implement.
+    switch (protocol->rule) {
+        case ProtocolAST::Var:
+            [[fallthrough]];
+        case ProtocolAST::Const: {
+            // Collect constants/variables.
+            auto type = *protocol->type->ident;
+            for (auto assign : *protocol->assigns) {
+                analyzeCV(type, protocol->rule == ProtocolAST::Const, assign);
+            }
+            break;
+        }
+        case ProtocolAST::Fn: {
+            // Collect function.
+            auto name = *protocol->name;
+            check(
+                !globalNames.contains(name),
+                format("Declare name {} twice in global scope", name)
+            );
+            auto exp = protocol->exp;
+            check(
+                exp->rule == ExpAST::TLA,
+                format("RHS of function {} should not involve primitive calls", name)
+            );
+            fns.emplace_back(name, protocol->params, exp->tla);
+            break;
+        }
+        case ProtocolAST::Thread:
+            analyzeThread(*protocol->type->ident, *protocol->name, protocol->stmts);
+            break;
+    }
 }
 
-void TLABuilder::analyze(StmtAST* stmt) {
-    // TODO: implement.
+void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign) {
+    string cv = (is_const ? "constant" : "variable");
+    bool is_global = (type == all);
+    if (!is_global) {
+        check(
+            nodetypes.contains(type),
+            format("Declare {} of unknown node type {}", cv, type)
+        );
+    }
+
+    auto name = *assign->ident;
+    if (is_global) {
+        check(
+            !type2vars[type].contains(name),
+            format("Declare name {} twice in global scope", name)
+        );
+        globalNames.insert(name);
+    }
+    else {
+        check(
+            !type2consts[type].contains(name) && !type2vars[type].contains(name),
+            format("Declare name {} twice for node type {}", name, type)
+        );
+        if (is_const) {
+            type2consts[type].insert(name);
+        } else {
+            type2vars[type].insert(name);
+        }
+    }
+
+    check(
+        assign->keys == nullptr,
+        format("LHS of {} declaration should be an identifier", cv)
+    );
+    auto exp = assign->exp;
+    check(
+        exp->rule == ExpAST::TLA,
+        format("RHS of {} declaration {} should not involve primitive calls", cv, name)
+    );
+    type2cvDecls[type].emplace_back(name, is_const, exp->tla);
 }
 
-void TLABuilder::analyze(ExpAST* exp) {
+void TLABuilder::analyzeThread(const string& type, const string& name,
+    vector<StmtAST*>* stmts) {
+    check(
+        nodetypes.contains(type),
+        format("Declare thread of unknown node type {}", type)
+    );
+    check(
+        !globalNames.contains(name),
+        format("Declare name {} twice in global scope", name)
+    );
+    globalNames.insert(name);
+    type2threads[type][name] = stmts;
+
     // TODO: implement.
 }
 
 void TLABuilder::analyze(PropertyAST* property) {
-    // TODO: implement.
+    // Collect properties.
+    properties.push_back(property);
 }
 
-void TLABuilder::analyze(CtlAST* ctl) {
-    // TODO: implement.
-}
-
-string TLABuilder::buildTLA(string module_name) {
+string TLABuilder::buildTLA() {
     // TODO: implement.
     return null;
 }

@@ -138,19 +138,19 @@ struct ProtocolAST {
     TypeAST* type;
     vector<AssignAST*>* assigns;
     string* name;
-    vector<string*>* args;
+    vector<string*>* params;
     ExpAST* exp;
     vector<StmtAST*>* stmts;
 
     ProtocolAST(Rule _rule, TypeAST* _type, vector<AssignAST*>* _assigns,
-        string* _name, vector<string*>* _args, ExpAST* _exp, vector<StmtAST*>* _stmts) :
+        string* _name, vector<string*>* _params, ExpAST* _exp, vector<StmtAST*>* _stmts) :
         rule(_rule), type(_type), assigns(_assigns), name(_name),
-            args(_args), exp(_exp), stmts(_stmts) { }
+            params(_params), exp(_exp), stmts(_stmts) { }
     ~ProtocolAST() {
         delete_if(type);
         delete_if(assigns);
         delete_if(name);
-        delete_if(args);
+        delete_if(params);
         delete_if(exp);
         delete_if(stmts);
     }
