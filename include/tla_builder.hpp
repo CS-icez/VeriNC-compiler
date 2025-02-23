@@ -53,9 +53,12 @@ private:
         "self"
     };
 
+    vector<string> strPool;
+
     uset<string> globalNames;
     vector<pair<string, string*>> configs;
-    vector<PropertyAST*> properties;
+    // vector<pair<string, string*>> invariants;
+    // vector<pair<string, string*>> properties;
 
     uset<string> nodetypes;
     uset<string> nodes;
@@ -64,19 +67,15 @@ private:
     umap<string, umap<string, string>> nexts;
 
     umap<string, vector<tuple<string, bool, string*>>> type2cvDecls; // type -> (name, is_const, init)
-    umap<string, uset<string>> type2consts;
-    umap<string, uset<string>> type2vars;
     vector<tuple<string, vector<string*>*, string*>> fns;
     umap<string, umap<string, vector<StmtAST*>*>> type2threads;
 
     void check(bool cond, const string& msg);
-    void check_not_reserved(const string& name);
+    void addNewName(const string& name, bool is_user_defined = true);
 
     void analyze(SpecAST* spec);
     void analyze(ConfigAST* config);
     void analyze(TopologyAST* topology);
-    void analyze(TypeAST* type);
-    void analyze(RouteEntryAST* entry);
     void analyze(ProtocolAST* protocol);
     void analyze(PropertyAST* property);
 
@@ -87,6 +86,8 @@ private:
     void completeNexts();
     string findNext(const string& src, const string& dst,
         uset<pair<string, string>>& visited);
+
+    void addConstants();
 
     string buildTLA();
     string buildCFG();

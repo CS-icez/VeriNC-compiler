@@ -22,7 +22,12 @@ Identifier    [a-zA-Z_][a-zA-Z0-9_]*
 
 %%
 
-{TLA}           { yylval.p_string = new string(yytext); return TLA; }
+{TLA}           {
+    auto s = new string(yytext);
+    *s = s->substr(1, s->length() - 2);
+    yylval.p_string = s;
+    return TLA;
+}
 
 {WhiteSpace}    { }
 {LineComment}   { }

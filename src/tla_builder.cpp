@@ -1,4 +1,6 @@
 #include "tla_builder.hpp"
+#include <algorithm>
+#include <cctype>
 #include <format>
 #include <iostream>
 #include <stdexcept>
@@ -22,15 +24,32 @@ void TLABuilder::check(bool cond, const string& msg) {
     }
 }
 
-void TLABuilder::check_not_reserved(const string& name) {
+void TLABuilder::addNewName(const string& name, bool is_user_defined) {
     check(
         !tla_reserved.contains(name) && !our_reserved.contains(name),
         format("Name {} is a reserved word", name)
     );
+    if (is_user_defined) {
+        check(
+            !globalNames.contains(name),
+            format("Name {} has been declared", name)
+        );
+        check(
+            !name.starts_with("__") && !name.starts_with("WF_") && !name.starts_with("SF_"),
+            format("Name {} starts with reserved prefix __, WF_, or SF_", name)
+        );
+    } else {
+        check(
+            !globalNames.contains(name),
+            format("Name {} has been declared for special use", name)
+        );
+    }
+    globalNames.insert(name);
 }
 
 auto TLABuilder::build() -> pair<string, string> {
     analyze(spec);
+    std::cout << "Analysis completed" << std::endl;
     return {buildTLA(), buildCFG()};
 }
 
@@ -66,6 +85,10 @@ void TLABuilder::analyze(SpecAST* spec) {
     // Complete routing tables.
     completeNexts();
 
+    // Add pre-defined constants and variables.
+    strPool.reserve(100); //! It is dangerous to store pointers to container elements.
+    addConstants();
+
     // Analyze protocol sections.
     for (auto protocol : protocols) {
         analyze(protocol);
@@ -79,7 +102,7 @@ void TLABuilder::analyze(ConfigAST* config) {
     check(
         !globalNames.contains(name),
         format("Declare name {} twice in global scope", name));
-    check_not_reserved(name);
+    addNewName(name);
     globalNames.insert(name);
     check(
         assign->keys == nullptr,
@@ -98,11 +121,7 @@ void TLABuilder::analyze(TopologyAST* topology) {
         case TopologyAST::NodeType:
             // Collect node types.
             for (auto type : *topology->types) {
-                check(
-                    !nodetypes.contains(*type->ident),
-                    format("Declare node type {} twice", *type->ident)
-                );
-                check_not_reserved(*type->ident);
+                addNewName(*type->ident);
                 nodetypes.insert(*type->ident);
             }
             break;
@@ -114,11 +133,7 @@ void TLABuilder::analyze(TopologyAST* topology) {
                 format("Declare nodes of unknown node type {}", type)
             );
             for (auto node : *topology->nodes) {
-                check(
-                    !nodes.contains(*node),
-                    format("Declare node {} twice", *node)
-                );
-                check_not_reserved(*node);
+                addNewName(*node);
                 nodes.insert(*node);
                 type2nodes[type].insert(*node);
 
@@ -241,6 +256,86 @@ string TLABuilder::findNext(const string& src, const string& dst,
     return res;
 }
 
+void TLABuilder::addConstants() {
+    // `null = null`
+    strPool.emplace_back("null");
+    configs.emplace_back(null, &strPool.back());
+
+    // Auxiliary functions.
+    auto to_upper = [](const string& s) {
+        auto res = s;
+        std::transform(s.begin(), s.end(), res.begin(),
+            [](unsigned char c) { return std::toupper(c); });
+        return res;
+    };
+    auto join = [](const uset<string>& v, const string& sep) {
+        string res;
+        bool is_first = true;
+        for (const auto& s : v) {
+            if (is_first) {
+                is_first = false;
+            } else {
+                res += sep;
+            }
+            res += s;
+        }
+        return res;
+    };
+    auto first_eq = [](const string& s) {
+        return [s](const pair<string, string*>& p) { return p.first == s; };
+    };
+
+    // Check that there is no duplicate if converting `nodetypes` to capitals.
+    uset<string> capitals;
+    for (const auto& type : nodetypes) {
+        capitals.insert(to_upper(type));
+    }
+    check(
+        capitals.size() == nodetypes.size(),
+        "Node types that differ only in capitalization are not allowed"
+    );
+
+    for (const auto& type : nodetypes) {
+        // `TYPE_SET = {node1, node2, ...}`
+        auto type_set = to_upper(type) + "_SET";
+        addNewName(type_set, false);
+        auto t = string("{") + join(type2nodes[type], ", ") + "}";
+        strPool.push_back(t);
+        configs.emplace_back(type_set, &strPool.back());
+
+        // `TYPE_NUM = Cardinality(TYPE_SET)`
+        auto type_num = to_upper(type) + "_NUM";
+        addNewName(type_num, false);
+        t = format("Cardinality({})", type_set);
+        strPool.push_back(t);
+        type2cvDecls[all].emplace_back(type_num, true, &strPool.back());
+    }
+
+    // `NODE_SET = {node1, node2, ...}`
+    auto node_set = "NODE_SET";
+    addNewName(node_set, false);
+    auto t = string("{") + join(nodes, ", ") + "}";
+    strPool.push_back(t);
+    type2cvDecls[all].emplace_back(node_set, true, &strPool.back());
+
+    // `MAX_LOSS = 0`
+    auto max_loss = "MAX_LOSS";
+    bool not_defined = (std::find_if(configs.begin(), configs.end(),
+        first_eq(max_loss)) == configs.end());
+    if (not_defined) {
+        strPool.push_back("0");
+        configs.emplace_back(max_loss, &strPool.back());
+    }
+    // `MAX_OUT_OF_ORDER = 0`
+    auto max_out_of_order = "MAX_OUT_OF_ORDER";
+    not_defined = (std::find_if(configs.begin(), configs.end(),
+        first_eq(max_out_of_order)) == configs.end());
+    if (not_defined) {
+        strPool.push_back("0");
+        configs.emplace_back(max_out_of_order, &strPool.back());
+    }
+}
+
 void TLABuilder::analyze(ProtocolAST* protocol) {
     switch (protocol->rule) {
         case ProtocolAST::Var:
@@ -256,12 +351,7 @@ void TLABuilder::analyze(ProtocolAST* protocol) {
         case ProtocolAST::Fn: {
             // Collect function.
             auto name = *protocol->name;
-            check(
-                !globalNames.contains(name),
-                format("Declare name {} twice in global scope", name)
-            );
-            globalNames.insert(name);
-            check_not_reserved(name);
+            addNewName(name);
             auto exp = protocol->exp;
             check(
                 exp->rule == ExpAST::TLA,
@@ -287,25 +377,7 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
     }
 
     auto name = *assign->ident;
-    check_not_reserved(name);
-    if (is_global) {
-        check(
-            !type2vars[type].contains(name),
-            format("Declare name {} twice in global scope", name)
-        );
-        globalNames.insert(name);
-    }
-    else {
-        check(
-            !type2consts[type].contains(name) && !type2vars[type].contains(name),
-            format("Declare name {} twice for node type {}", name, type)
-        );
-        if (is_const) {
-            type2consts[type].insert(name);
-        } else {
-            type2vars[type].insert(name);
-        }
-    }
+    addNewName(name);
 
     check(
         assign->keys == nullptr,
@@ -325,20 +397,16 @@ void TLABuilder::analyzeThread(const string& type, const string& name,
         nodetypes.contains(type),
         format("Declare thread of unknown node type {}", type)
     );
-    check(
-        !globalNames.contains(name),
-        format("Declare name {} twice in global scope", name)
-    );
-    check_not_reserved(name);
-    globalNames.insert(name);
+    addNewName(name);
     type2threads[type][name] = stmts;
 
     // TODO: implement.
 }
 
 void TLABuilder::analyze(PropertyAST* property) {
+    // TODO: How to implement?
     // Collect properties.
-    properties.push_back(property);
+    // properties.push_back(property);
 }
 
 string TLABuilder::buildTLA() {
@@ -347,6 +415,12 @@ string TLABuilder::buildTLA() {
 }
 
 string TLABuilder::buildCFG() {
-    // TODO: implement.
-    return null;
+    string res;
+    res += "SPECIFICATION Spec\n";
+    res += "CONSTANTS\n";
+    for (const auto& [name, tla] : configs) {
+        res += format("  {} = {}\n", name, *tla);
+    }
+    // TODO: property, invariant, symmetry.
+    return res;
 }
