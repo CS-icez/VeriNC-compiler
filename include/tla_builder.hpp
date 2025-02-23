@@ -54,20 +54,28 @@ private:
     };
 
     vector<string> strPool;
+    vector<vector<string*>> vecStrPool;
 
     uset<string> globalNames;
+    // (name, exp)
     vector<pair<string, string*>> configs;
-    // vector<pair<string, string*>> invariants;
-    // vector<pair<string, string*>> properties;
+    // (name, exp)
+    vector<pair<string, string*>> invariants;
+    // (name, exp)
+    vector<pair<string, string*>> properties;
 
     uset<string> nodetypes;
     uset<string> nodes;
     umap<string, uset<string>> type2nodes;
     umap<string, uset<string>> links;
+    // src -> (dst -> next)
     umap<string, umap<string, string>> nexts;
 
-    umap<string, vector<tuple<string, bool, string*>>> type2cvDecls; // type -> (name, is_const, init)
+    // type -> (name, is_const, init)
+    umap<string, vector<tuple<string, bool, string*>>> type2cvDecls;
+    // (name, args, exp)
     vector<tuple<string, vector<string*>*, string*>> fns;
+    // type -> (name, stmts)
     umap<string, umap<string, vector<StmtAST*>*>> type2threads;
 
     void check(bool cond, const string& msg);
@@ -88,6 +96,8 @@ private:
         uset<pair<string, string>>& visited);
 
     void addConstants();
+    void addVariables();
+    void addFns();
 
     string buildTLA();
     string buildCFG();

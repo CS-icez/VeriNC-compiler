@@ -15,7 +15,9 @@ topology {
 
 protocol {
     const(all) REQ_SET = $0..(REQ_NUM - 1)$, AGG_SET = $0..(AGG_SIZE - 1)$;
-    var(all) active_workers = $CLIENT_SET$;
+    const(all) req_val = $[ip \in CLIENT_SET, i \in REQ_SET |-> RandomElement(0..100000)]$;
+    const(all) res = $[i \in REQ_SET |-> SumSet({req_val[ip, i] : ip \in CLIENT_SET})]$;
+    var(all) active_clients = $CLIENT_SET$;
 
     var(Client) requests = $[i \in REQ_SET |-> [
         wid |-> self,
@@ -54,7 +56,7 @@ protocol {
             } else {
                 pending = $pending \ {pkt.psn}$;
                 if ($pending = {}$) {
-                    active_workers = $active_workers \ {self}$;
+                    active_clients = $active_clients \ {self}$;
                     exit();
                 }
             }
@@ -75,7 +77,7 @@ protocol {
 
     thread(Switch) SwitchRecv {
     SwitchRecv:
-        while ($active_workers # {}$) {
+        while ($active_clients # {}$) {
             temp pkt = receive();
             temp v = $pkt.ver$, i = $pkt.idx$, w = $pkt.wid$;
 
@@ -98,4 +100,9 @@ protocol {
             }
         }
     }
+}
+
+property {
+    TestProperty = $[](TRUE)$;
+    TestInvariant = $TRUE$;
 }

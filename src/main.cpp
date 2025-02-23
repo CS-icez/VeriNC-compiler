@@ -48,9 +48,9 @@ int main(int argc, char* argv[]) {
 	auto tla_out = std::string("tla/") + module + ".tla";
 	std::ofstream tla_os(tla_out);
 	check(tla_os.is_open(), std::format("Cannot open {}", tla_out));
-	tla_os << tla << std::endl;
+	tla_os << tla;
 	auto cfg_out = std::string("tla/") + module + ".cfg";
 	std::ofstream cfg_os(cfg_out);
 	check(cfg_os.is_open(), std::format("Cannot open {}", cfg_out));
-	cfg_os << cfg << std::endl;
+	cfg_os << cfg;
 }

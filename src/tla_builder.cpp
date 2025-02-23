@@ -85,9 +85,13 @@ void TLABuilder::analyze(SpecAST* spec) {
     // Complete routing tables.
     completeNexts();
 
-    // Add pre-defined constants and variables.
-    strPool.reserve(100); //! It is dangerous to store pointers to container elements.
+    // Add pre-defined symbols.
+    //! It is dangerous to store pointers to container elements.
+    strPool.reserve(100);
+    vecStrPool.reserve(100);
     addConstants();
+    addVariables();
+    addFns();
 
     // Analyze protocol sections.
     for (auto protocol : protocols) {
@@ -295,11 +299,13 @@ void TLABuilder::addConstants() {
         "Node types that differ only in capitalization are not allowed"
     );
 
+    string t = null;
+
     for (const auto& type : nodetypes) {
         // `TYPE_SET = {node1, node2, ...}`
         auto type_set = to_upper(type) + "_SET";
         addNewName(type_set, false);
-        auto t = string("{") + join(type2nodes[type], ", ") + "}";
+        t = string("{") + join(type2nodes[type], ", ") + "}";
         strPool.push_back(t);
         configs.emplace_back(type_set, &strPool.back());
 
@@ -314,7 +320,7 @@ void TLABuilder::addConstants() {
     // `NODE_SET = {node1, node2, ...}`
     auto node_set = "NODE_SET";
     addNewName(node_set, false);
-    auto t = string("{") + join(nodes, ", ") + "}";
+    t = string("{") + join(nodes, ", ") + "}";
     strPool.push_back(t);
     type2cvDecls[all].emplace_back(node_set, true, &strPool.back());
 
@@ -334,6 +340,84 @@ void TLABuilder::addConstants() {
         strPool.push_back("0");
         configs.emplace_back(max_out_of_order, &strPool.back());
     }
+
+    // TODO: symmetry.
+}
+
+void TLABuilder::addVariables() {
+    // `__net_buf = [ip \in IP_SET |-> <<>>]`
+    strPool.push_back(R"([ip \in IP_SET |-> <<>>])");
+    type2cvDecls[all].emplace_back("__net_buf", false, &strPool.back());
+
+    // `__max_loss = MAX_LOSS`
+    strPool.push_back("MAX_LOSS");
+    type2cvDecls[all].emplace_back("__max_loss", false, &strPool.back());
+
+    // `__max_out_of_order = MAX_OUT_OF_ORDER`
+    strPool.push_back("MAX_OUT_OF_ORDER");
+    type2cvDecls[all].emplace_back("__max_out_of_order", false, &strPool.back());
+}
+
+void TLABuilder::addFns() {
+    string* exp = nullptr;
+    string* arg1 = nullptr;
+    string* arg2 = nullptr;
+    string* arg3 = nullptr;
+    vector<string*>* args = nullptr;
+
+    // `__MinPsnElem(S) == CHOOSE x \in S : \A y \in S : x.psn <= y.psn`
+    strPool.push_back(R"(CHOOSE x \in S : \A y \in S : x.psn <= y.psn)");
+    exp = &strPool.back();
+    strPool.push_back("S");
+    arg1 = &strPool.back();
+    vecStrPool.push_back({arg1});
+    args = &vecStrPool.back();
+    fns.emplace_back("__MinPsnElem", args, exp);
+
+    // ```
+    // __Set2Seq(S) == LET
+    //   RECURSIVE F(_, _)
+    //   F(res_, S_) == IF S_ = {}
+    //     THEN res_
+    //     ELSE LET x == MinSeqElem(S_) IN F(Append(res_, x), S_ \ {x})
+    // IN F(<<>>, S)
+    // ```
+    strPool.push_back(
+        "LET\n"
+        "  RECURSIVE F(_, _)\n"
+        "  F(res_, S_) == IF S_ = {}\n"
+        "    THEN res_\n"
+        "    ELSE LET x == MinSeqElem(S_) IN F(Append(res_, x), S_ \\ {x})\n"
+        "IN F(<<>>, S)"
+    );
+    exp = &strPool.back();
+    strPool.push_back("S");
+    arg1 = &strPool.back();
+    vecStrPool.push_back({arg1});
+    args = &vecStrPool.back();
+    fns.emplace_back("__Set2Seq", args, exp);
+
+    // `__OutOfOrderRange(seq) == 1..Len(seq)`
+    strPool.push_back("1..Len(seq)");
+    exp = &strPool.back();
+    strPool.push_back("seq");
+    arg1 = &strPool.back();
+    vecStrPool.push_back({arg1});
+    args = &vecStrPool.back();
+    fns.emplace_back("__OutOfOrderRange", args, exp);
+
+    // `__InsertAtEnd(seq, i, elem) == InsertAt(seq, Len(seq) - i + 1, elem)`
+    strPool.push_back("InsertAt(seq, Len(seq) - i + 1, elem)");
+    exp = &strPool.back();
+    strPool.push_back("seq");
+    arg1 = &strPool.back();
+    strPool.push_back("i");
+    arg2 = &strPool.back();
+    strPool.push_back("elem");
+    arg3 = &strPool.back();
+    vecStrPool.push_back({arg1, arg2, arg3});
+    args = &vecStrPool.back();
+    fns.emplace_back("__InsertAtEnd", args, exp);
 }
 
 void TLABuilder::analyze(ProtocolAST* protocol) {
@@ -404,9 +488,23 @@ void TLABuilder::analyzeThread(const string& type, const string& name,
 }
 
 void TLABuilder::analyze(PropertyAST* property) {
-    // TODO: How to implement?
     // Collect properties.
-    // properties.push_back(property);
+    auto name = *property->ident;
+    addNewName(name);
+
+    auto exp = property->ctl->exp;
+    check(
+        exp->rule == ExpAST::TLA,
+        format("RHS of property {} should not involve primitive calls", name)
+    );
+
+    auto tla = exp->tla;
+    bool is_temporal = (tla->starts_with("[]") || tla->starts_with("<>"));
+    if (is_temporal) {
+        properties.emplace_back(name, tla);
+    } else {
+        invariants.emplace_back(name, tla);
+    }
 }
 
 string TLABuilder::buildTLA() {
@@ -421,6 +519,18 @@ string TLABuilder::buildCFG() {
     for (const auto& [name, tla] : configs) {
         res += format("  {} = {}\n", name, *tla);
     }
-    // TODO: property, invariant, symmetry.
+    if (!invariants.empty()) {
+        res += "INVARIANTS\n";
+        for (const auto& [name, tla] : invariants) {
+            res += format("  {}\n", name);
+        }
+    }
+    if (!properties.empty()) {
+        res += "PROPERTIES\n";
+        for (const auto& [name, tla] : properties) {
+            res += format("  {}\n", name);
+        }
+    }
+    // TODO: symmetry.
     return res;
 }
