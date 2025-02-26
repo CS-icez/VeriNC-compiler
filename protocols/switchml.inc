@@ -39,17 +39,17 @@ protocol {
     fn Flip(b) = $IF b = 1 THEN 0 ELSE 1$;
 
     thread(Client) ClientSend {
-    WorkerSend:
+    L_ClientSend:
       send_m($[i \in AGG_SET |-> requests[i]]$);
       pending = ${i : i \in AGG_SET}$;
     }
 
     thread(Client) ClientRecv {
-    WorkerRecv:
+    L_ClientRecv:
         wait($pending # null$);
         while ($TRUE$) {
             temp pkt = receive();
-            assert($pkt.val = res[pkt.psn]$, $"WorkerAck: incorrect value"$);
+            assert($pkt.val = res[pkt.psn]$, $"ClientAck: incorrect value"$);
             if ($pkt.psn + AGG_SIZE < REQ_NUM$) {
                 send($requests[pkt.psn + AGG_SIZE]$);
                 pending = $(pending \ {pkt.psn}) \cup {pkt.psn + AGG_SIZE}$;
@@ -64,7 +64,7 @@ protocol {
     }
 
     thread(Client) ClientRetx {
-    ClientRetx:
+    L_ClientRetx:
         wait($pending # null$);
         while ($TRUE$) {
             temp pkt = receive();
@@ -76,21 +76,21 @@ protocol {
     }
 
     thread(Switch) SwitchRecv {
-    SwitchRecv:
+    L_SwitchRecv:
         while ($active_clients # {}$) {
             temp pkt = receive();
             temp v = $pkt.ver$, i = $pkt.idx$, w = $pkt.wid$;
 
             if ($~seen[v, i, w]$) {
                 seen[$v$, $i$, $w$] = $TRUE$, seen[$Flip(v)$, $i$, $w$] = $FALSE$;
-                count[$v$, $i$] = $IF count[v, i] + 1 = WORKER_NUM THEN 0 ELSE count[v, i] + 1$;
-                if ($count[v, i] = 1 \/ WORKER_NUM = 1$) {
+                count[$v$, $i$] = $IF count[v, i] + 1 = CLIENT_NUM THEN 0 ELSE count[v, i] + 1$;
+                if ($count[v, i] = 1 \/ CLIENT_NUM = 1$) {
                     pool[$v$, $i$] = $pkt.val$;
                 } else {
                     pool[$v$, $i$] = $pool[v, i] + pkt.val$;
                 }
                 if ($count[v, i] = 0$) {
-                    multicast($"val" :> pool[v, i] @@ pkt$, $WORKER_SET$);
+                    multicast($"val" :> pool[v, i] @@ pkt$, $CLIENT_SET$);
                 }
             }
             else {

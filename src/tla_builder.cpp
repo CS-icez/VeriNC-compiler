@@ -495,10 +495,10 @@ void TLABuilder::analyzeThread(const string& type, const string& name,
     );
     addNewName(name);
 
-    type2threads[type][name] = analyzeThreadStmts(type, stmts);
+    type2threads[type][name] = analyzeThreadStmts(type, *stmts);
 }
 
-auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>* stmts)
+auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
     -> vector<LabelMeta> {
     PathMeta path;
     LabelMeta label;
@@ -508,20 +508,27 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>* stmts)
 
     auto check_after_exit = [&path, this]() {
         this->check(
-            path.has_exit == false,
+            path.has_exit != true,
             "Statements after exit are unreachable"
         );
     };
+    
+    check(!stmts.empty(), "Thread should not be empty");
 
-    for (auto stmt : *stmts) {
+    for (auto stmt : stmts) {
         switch (stmt->rule) {
             case StmtAST::Breakpoint:
                 if (label.name != first) {
+                    check(
+                        !label.stmts.empty(),
+                        format("No statement follows label {}", label.name)
+                    );
                     labels.push_back(label);
-                    label = LabelMeta();
-                    label.name = *stmt->name;
-                    path = PathMeta();
                 }
+                label = LabelMeta();
+                label.name = *stmt->name;
+                addNewName(label.name);
+                path = PathMeta();
                 break;
             case StmtAST::Assign:
                 check_after_exit();
@@ -545,7 +552,8 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>* stmts)
                 break;
             case StmtAST::If:
                 check_after_exit();
-                path = analyzeIfStmt(type, stmt, path, label);
+                path = analyzeIfStmt(type, *stmt, path, label);
+                // TODO: check branch_has_label.
                 label.stmts.push_back(stmt);
                 break;
             case StmtAST::While:
@@ -566,19 +574,19 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>* stmts)
     return labels;
 }
 
-TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST* stmt,
+TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST& stmt,
     PathMeta path, LabelMeta& label_meta) {
-    assert(stmt->rule == StmtAST::If && "Internal error: not an if statement");
+    assert(stmt.rule == StmtAST::If && "Internal error: not an if statement");
     
     check(
-        stmt->exp->rule == ExpAST::TLA,
+        stmt.exp->rule == ExpAST::TLA,
         "If condition should not involve primitive calls"
     );
-    mangleTLA(type, *stmt->exp->tla);
-    if (stmt->vec_elif_exp != nullptr) {
-        assert(!stmt->vec_elif_exp->empty()
+    mangleTLA(type, *stmt.exp->tla);
+    if (stmt.vec_elif_exp != nullptr) {
+        assert(!stmt.vec_elif_exp->empty()
             && "Internal error: empty elif condition list");
-        for (auto exp : *stmt->vec_elif_exp) {
+        for (auto exp : *stmt.vec_elif_exp) {
             check(
                 exp->rule == ExpAST::TLA,
                 "Elif condition should not involve primitive calls"
@@ -588,21 +596,21 @@ TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST* stmt
     }
 
     auto has_temp = !label_meta.temps.empty();
-    auto [res_path, if_label_meta] = analyzeBranch(type, stmt->stmts, path, has_temp);
+    auto [res_path, if_label_meta] = analyzeBranch(type, *stmt.stmts, path, has_temp);
     label_meta.branches.push_back(std::move(if_label_meta));
     
-    if (stmt->vec_elif_stmts != nullptr) {
-        assert(stmt->vec_elif_stmts->size() == stmt->vec_elif_exp->size()
+    if (stmt.vec_elif_stmts != nullptr) {
+        assert(stmt.vec_elif_stmts->size() == stmt.vec_elif_exp->size()
             && "Internal error: elif condition and statement list size mismatch");
-        for (auto elif_stmts : *stmt->vec_elif_stmts) {
-            auto [elif_path, elif_label_meta] = analyzeBranch(type, elif_stmts, path, has_temp);
+        for (auto elif_stmts : *stmt.vec_elif_stmts) {
+            auto [elif_path, elif_label_meta] = analyzeBranch(type, *elif_stmts, path, has_temp);
             res_path &= elif_path;
             label_meta.branches.push_back(std::move(elif_label_meta));
         }
     }
     
-    if (stmt->else_stmts != nullptr) {
-        auto [else_path, else_label_meta] = analyzeBranch(type, stmt->else_stmts, path, has_temp);
+    if (stmt.else_stmts != nullptr) {
+        auto [else_path, else_label_meta] = analyzeBranch(type, *stmt.else_stmts, path, has_temp);
         res_path &= else_path;
         label_meta.branches.push_back(std::move(else_label_meta));
     }
@@ -611,13 +619,103 @@ TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST* stmt
 }
 
 // TODO: merge with `analyzeThreadStmts`.
-auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>* stmts,
-    PathMeta meta, bool has_temp) -> pair<PathMeta, vector<LabelMeta>> {
+auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
+    PathMeta path, bool has_temp) -> pair<PathMeta, vector<LabelMeta>> {
+    LabelMeta label;
     vector<LabelMeta> labels;
-    // TODO: implement.
-    (void)(type); (void)(stmts); (void)(meta);
+    const string first = "__first_label";
+    label.name = first;
+    
+    auto check_after_exit = [&path, this]() {
+        this->check(
+            path.has_exit != true,
+            "Statements after exit are unreachable"
+        );
+    };
+    assert(path.has_exit == false && "Internal error: exit before branch");
+    
+    if (stmts.empty()) {
+        stmts.push_back(make_ast<StmtAST>(StmtAST::Null, n8));
+        return {path, labels};
+    }
 
-    return {meta, labels};
+    // Prepend a fake label to keep things consistent.
+    if (stmts.front()->rule != StmtAST::Breakpoint) {
+        stmts.insert(
+            stmts.begin(),
+            make_ast<StmtAST>(StmtAST::Breakpoint, make_str(null), n7)
+        );
+    }
+
+    for (auto stmt : stmts) {
+        switch (stmt->rule) {
+            case StmtAST::Breakpoint:
+                if (label.name != first) {
+                    check(
+                        !has_temp,
+                        "After declaring temporary values, "
+                        "breakpoints are not allowed in following branches"
+                    );
+                    check(
+                        !label.stmts.empty(),
+                        format("No statement follows label {}", label.name)
+                    );
+                    labels.push_back(label);
+                    path.branch_has_label = true;
+                }
+                label = LabelMeta();
+                label.name = *stmt->name;
+                addNewName(label.name);
+                path = PathMeta();
+                break;
+            case StmtAST::Assign:
+                check_after_exit();
+                analyzeAssignStmt(type, *stmt->assigns);
+                path.has_effect = true;
+                label.stmts.push_back(stmt);
+                break;
+            case StmtAST::Null:
+                label.stmts.push_back(stmt);
+                break;
+            case StmtAST::PrimCall:
+                check_after_exit();
+                analyzePrimCallStmt(type, *stmt->name, *stmt->exps, path);
+                path.has_effect = true;
+                label.stmts.push_back(stmt);
+                break;
+            case StmtAST::Temp:
+                check_after_exit();
+                analyzeTempStmt(type, *stmt->assigns, label.temps);
+                label.stmts.push_back(stmt);
+                break;
+            case StmtAST::If:
+                // TODO: test no problem with nested branches.
+                check_after_exit();
+                path = analyzeIfStmt(type, *stmt, path, label);
+                label.stmts.push_back(stmt);
+                break;
+            case StmtAST::While:
+                check_after_exit();
+                check(
+                    !has_temp,
+                    "While loops are not allowed after declaring temporary values. "
+                    "Try setting a breakpoint before the while loop, "
+                    "or declaring temporary values inside the while loop."
+                );
+                // TODO: implement.
+                break;
+            case StmtAST::Break:
+                [[fallthrough]];
+            case StmtAST::Continue:
+                check(
+                    false,
+                    format("Break and continue statements are not supported for now")
+                );
+                break;
+        }
+    }
+
+    return {path, labels};
 }
 
 void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assigns) {

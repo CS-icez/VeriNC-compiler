@@ -28,7 +28,7 @@ Type ::= IDENT
 RouteEntry ::= Comma<IDENT> ":" IDENT ";"
 Protocol ::= ("var" | "const") "(" (Type | "all") ")" Comma<Assign> ";"
            | "fn" IDENT "(" Comma<IDENT> ")" "=" Exp ";"
-           | "thread" "(" Type ")" IDENT "{" Stmt* "}"
+           | "thread" "(" Type ")" IDENT "{" Stmt+ "}"
 Stmt ::= Breakpoint ":"
        | Comma<Assign> ";"
        | ";"
