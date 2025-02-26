@@ -144,14 +144,26 @@ private:
         TriBool has_sendlike;
         TriBool has_exit;
         TriBool has_effect;
+
+        PathMeta& operator&=(const PathMeta& other) {
+            has_recv &= other.has_recv;
+            has_sendlike &= other.has_sendlike;
+            has_exit &= other.has_exit;
+            has_effect &= other.has_effect;
+            return *this;
+        }
     };
-    auto analyzeStmts(const string& type, vector<StmtAST*>* stmts)
+    auto analyzeThreadStmts(const string& type, vector<StmtAST*>* stmts)
         -> vector<LabelMeta>;
+    PathMeta analyzeIfStmt(const string& type, StmtAST* stmt, PathMeta path,
+        LabelMeta& label_meta);
     auto analyzeBranch(const string& type, vector<StmtAST*>* stmts, 
-        PathMeta meta) -> pair<PathMeta, vector<LabelMeta>>;
+        PathMeta meta, bool has_temp) -> pair<PathMeta, vector<LabelMeta>>;
     void analyzeAssignStmt(const string& type, vector<AssignAST*>& assigns);
     void analyzePrimCallStmt(const string& type, string& name,
         vector<ExpAST*>& args, PathMeta& path);
+    void analyzeTempStmt(const string& type, vector<AssignAST*>& assigns,
+        vector<pair<string, string*>>& temps);
 
     void completeNexts();
     string findNext(const string& src, const string& dst,
