@@ -56,7 +56,9 @@ private:
     vector<string> strPool;
     vector<vector<string*>> vecStrPool;
 
-    uset<string> globalNames;
+    uset<string> names;
+    uset<string> localNames;
+    umap<string, uset<string>> type2localNames;
     // (name, exp)
     vector<pair<string, string*>> configs;
     // (name, exp)
@@ -73,10 +75,21 @@ private:
 
     // type -> (name, is_const, init)
     umap<string, vector<tuple<string, bool, string*>>> type2cvDecls;
+    umap<string, uset<string>> type2consts;
+    umap<string, uset<string>> type2vars;
     // (name, args, exp)
     vector<tuple<string, vector<string*>*, string*>> fns;
-    // type -> (name, stmts)
-    umap<string, umap<string, vector<StmtAST*>*>> type2threads;
+
+    struct LabelMeta {
+        string name;
+        vector<StmtAST*> stmts;
+        vector<vector<LabelMeta>> branches;
+        vector<pair<string, string*>> temps;
+        bool has_recv;
+    };
+    // type -> (name -> labels)
+    umap<string, umap<string, vector<LabelMeta>>> type2threads;
+
 
     void check(bool cond, const string& msg);
     void addNewName(const string& name, bool is_user_defined = true);
@@ -90,14 +103,65 @@ private:
     // Analyze constant/variable declaration.
     void analyzeCV(const string& type, bool is_const, AssignAST* assign);
     void analyzeThread(const string& type, const string& name, vector<StmtAST*>* stmts);
+    
+    struct TriBool {
+        enum TriBoolValue { True, False, Both } value;
+        
+        TriBool() : value(False) { }
+        explicit TriBool(TriBoolValue _value) : value(_value) { }
+        explicit TriBool(bool _value) : value(_value ? True : False) { }
+        TriBool& operator=(bool _value) {
+            value = _value ? True : False;
+            return *this;
+        }
+
+        bool operator==(TriBool _value) const {
+            return value == _value.value;
+        }
+        bool operator==(bool _value) const {
+            return *this == TriBool(_value);
+        }
+        operator bool() const = delete;
+
+        bool is_both() const {
+            return value == Both;
+        }
+
+        static inline TriBool merge(const TriBool& a, const TriBool& b) {
+            return a.value == b.value ? a : TriBool(Both);
+        }
+        TriBool operator&(const TriBool& other) const {
+            return merge(*this, other);
+        }
+        TriBool& operator&=(const TriBool& other) {
+            *this = merge(*this, other);
+            return *this;
+        }
+    };
+
+    struct PathMeta {
+        TriBool has_recv;
+        TriBool has_sendlike;
+        TriBool has_exit;
+        TriBool has_effect;
+    };
+    auto analyzeStmts(const string& type, vector<StmtAST*>* stmts)
+        -> vector<LabelMeta>;
+    auto analyzeBranch(const string& type, vector<StmtAST*>* stmts, 
+        PathMeta meta) -> pair<PathMeta, vector<LabelMeta>>;
+    void analyzeAssignStmt(const string& type, vector<AssignAST*>& assigns);
+    void analyzePrimCallStmt(const string& type, string& name,
+        vector<ExpAST*>& args, PathMeta& path);
 
     void completeNexts();
     string findNext(const string& src, const string& dst,
         uset<pair<string, string>>& visited);
 
-    void addConstants();
-    void addVariables();
-    void addFns();
+    void addOurConstants();
+    void addOurVariables();
+    void addOurFns();
+
+    void mangleTLA(const string& type, string& tla);
 
     string buildTLA();
     string buildCFG();

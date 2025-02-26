@@ -1,9 +1,11 @@
 #include "tla_builder.hpp"
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <format>
 #include <iostream>
 #include <stdexcept>
+#include "make_ast.hpp"
 using std::format;
 using std::pair;
 using std::string;
@@ -31,7 +33,7 @@ void TLABuilder::addNewName(const string& name, bool is_user_defined) {
     );
     if (is_user_defined) {
         check(
-            !globalNames.contains(name),
+            !names.contains(name),
             format("Name {} has been declared", name)
         );
         check(
@@ -40,11 +42,11 @@ void TLABuilder::addNewName(const string& name, bool is_user_defined) {
         );
     } else {
         check(
-            !globalNames.contains(name),
+            !names.contains(name),
             format("Name {} has been declared for special use", name)
         );
     }
-    globalNames.insert(name);
+    names.insert(name);
 }
 
 auto TLABuilder::build() -> pair<string, string> {
@@ -89,9 +91,9 @@ void TLABuilder::analyze(SpecAST* spec) {
     //! It is dangerous to store pointers to container elements.
     strPool.reserve(100);
     vecStrPool.reserve(100);
-    addConstants();
-    addVariables();
-    addFns();
+    addOurConstants();
+    addOurVariables();
+    addOurFns();
 
     // Analyze protocol sections.
     for (auto protocol : protocols) {
@@ -104,10 +106,10 @@ void TLABuilder::analyze(ConfigAST* config) {
     auto assign = config->assign;
     auto name = *assign->ident;
     check(
-        !globalNames.contains(name),
+        !names.contains(name),
         format("Declare name {} twice in global scope", name));
     addNewName(name);
-    globalNames.insert(name);
+    names.insert(name);
     check(
         assign->keys == nullptr,
         format("LHS of configuration should be an identifier")
@@ -260,7 +262,7 @@ string TLABuilder::findNext(const string& src, const string& dst,
     return res;
 }
 
-void TLABuilder::addConstants() {
+void TLABuilder::addOurConstants() {
     // `null = null`
     strPool.emplace_back("null");
     configs.emplace_back(null, &strPool.back());
@@ -344,7 +346,7 @@ void TLABuilder::addConstants() {
     // TODO: symmetry.
 }
 
-void TLABuilder::addVariables() {
+void TLABuilder::addOurVariables() {
     // `__net_buf = [ip \in IP_SET |-> <<>>]`
     strPool.push_back(R"([ip \in IP_SET |-> <<>>])");
     type2cvDecls[all].emplace_back("__net_buf", false, &strPool.back());
@@ -358,7 +360,7 @@ void TLABuilder::addVariables() {
     type2cvDecls[all].emplace_back("__max_out_of_order", false, &strPool.back());
 }
 
-void TLABuilder::addFns() {
+void TLABuilder::addOurFns() {
     string* exp = nullptr;
     string* arg1 = nullptr;
     string* arg2 = nullptr;
@@ -462,6 +464,10 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
 
     auto name = *assign->ident;
     addNewName(name);
+    if (!is_global) {
+        localNames.insert(name);
+        type2localNames[type].insert(name);
+    }
 
     check(
         assign->keys == nullptr,
@@ -472,7 +478,13 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
         exp->rule == ExpAST::TLA,
         format("RHS of {} declaration {} should not involve primitive calls", cv, name)
     );
+
     type2cvDecls[type].emplace_back(name, is_const, exp->tla);
+    if (is_const) {
+        type2consts[type].insert(name);
+    } else {
+        type2vars[type].insert(name);
+    }
 }
 
 void TLABuilder::analyzeThread(const string& type, const string& name,
@@ -482,9 +494,278 @@ void TLABuilder::analyzeThread(const string& type, const string& name,
         format("Declare thread of unknown node type {}", type)
     );
     addNewName(name);
-    type2threads[type][name] = stmts;
 
+    type2threads[type][name] = analyzeStmts(type, stmts);
+}
+
+auto TLABuilder::analyzeStmts(const string& type, vector<StmtAST*>* stmts)
+    -> vector<LabelMeta> {
+    PathMeta path;
+    LabelMeta label;
+    vector<LabelMeta> labels;
+    const string first = "__first_label";
+    label.name = first;
+
+    auto check_after_exit = [&path, this]() {
+        this->check(
+            path.has_exit == false,
+            "Statements after exit are unreachable"
+        );
+    };
+
+    for (auto it = stmts->begin(); it != stmts->end(); ++it) {
+        auto& stmt = *it;
+        switch (stmt->rule) {
+            case StmtAST::Breakpoint:
+                if (label.name != first) {
+                    labels.push_back(label);
+                    label = LabelMeta();
+                    label.name = *stmt->name;
+                    path = PathMeta();
+                }
+                break;
+            case StmtAST::Assign:
+                check_after_exit();
+                analyzeAssignStmt(type, *stmt->assigns);
+                path.has_effect = true;
+                break;
+            case StmtAST::Null:
+                // Nothing to do.
+                break;
+            case StmtAST::PrimCall:
+                check_after_exit();
+                analyzePrimCallStmt(type, *stmt->name, *stmt->exps, path);
+                path.has_effect = true;
+                break;
+            case StmtAST::Temp:
+                check_after_exit();
+                // TODO: implement.
+                break;
+            case StmtAST::If:
+                check_after_exit();
+                // TODO: implement.
+                break;
+            case StmtAST::While:
+                check_after_exit();
+                // TODO: implement.
+                break;
+            case StmtAST::Break:
+                [[fallthrough]];
+            case StmtAST::Continue:
+                check(
+                    false,
+                    format("Break and continue statements are not supported for now")
+                );
+                break;
+        }
+    }
+
+    return labels;
     // TODO: implement.
+}
+
+auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>* stmts,
+    PathMeta meta) -> pair<PathMeta, vector<LabelMeta>> {
+    vector<LabelMeta> labels;
+    // TODO: implement.
+    (void)(type); (void)(stmts); (void)(meta);
+
+    return {meta, labels};
+}
+
+void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assigns) {
+    check(
+        !assigns.empty(),
+        format("Ill-formed AST: empty assignment list")
+    );
+    
+    // Check that elements of `assigns` have the same `ident` field.
+    auto ident = *assigns[0]->ident;
+    check(
+        std::all_of(assigns.begin(), assigns.end(),
+            [ident](AssignAST* assign) { return *assign->ident == ident; }),
+        format("An assignment statement can only operate on one variable")
+    );
+
+    check(
+        type2vars[all].contains(ident) || type2vars[type].contains(ident),
+        format("{} cannot be assigned by node type {}", ident, type)
+    );
+
+    for (auto assign : assigns) {
+        auto exp = assign->exp;
+        check(
+            exp->rule == ExpAST::TLA,
+            format("RHS of assignment to {} should not involve primitive calls", ident)
+        );
+        mangleTLA(type, *exp->tla);
+        if (assign->keys != nullptr) {
+            for (auto key : *assign->keys) {
+                check(
+                    key->rule == ExpAST::TLA,
+                    format("Keys of assignment to {} should not involve primitive calls", ident)
+                );
+                mangleTLA(type, *key->tla);
+            }
+        }
+    }
+}
+
+void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
+    vector<ExpAST*>& args, PathMeta& path) {
+    if (name == "send" || name == "send_m" || name == "multicast") {
+        check(
+            path.has_sendlike == false,
+            "Two send-like operations within one atomic path"
+        );
+        path.has_sendlike = true;
+
+        check(
+            !path.has_recv.is_both(),
+            "When one branch calls `receive` but the other not, "
+            "send-like operations are not allowed after they merge. "
+            "Try setting a breakpoint before the send-like operation. "
+            "This is a limitation of the current implementation."
+        );
+        if (name == "send") {
+            check(
+                args.size() == 1,
+                "`send` should have exactly one argument, i.e. the packet to be sent"
+            );
+            name = path.has_recv == true ? "__DropSend" : "__Send";
+        } else if (name == "send_m") {
+            check(
+                args.size() == 1,
+                "`send_m` should have exactly one argument, "
+                "i.e. a dictionary mapping arbitrary keys to packets"
+            );
+            name = path.has_recv == true ? "__DropSendM" : "__SendM";
+        } else if (name == "multicast") {
+            check(
+                args.size() == 2,
+                "`multicast` should have exactly two arguments, "
+                "i.e. the packet to be sent and the set of destinations"
+            );
+            name = path.has_recv == true ? "__DropMulticast" : "__Multicast";
+        } else {
+            assert(false && "Internal error: unknown send-like operation");
+        }
+    }
+    else if (name == "receive") {
+        check(
+            path.has_recv == false,
+            "Two receive operations within one atomic path"
+        );
+        path.has_recv = true;
+        check(
+            path.has_sendlike == false,
+            "Calling `receive` after send-like operations is not allowed within one atomic path"
+        );
+        check(
+            args.size() == 0,
+            "`receive` should not have any arguments"
+        );
+        name = "__Receive";
+        args.push_back(make_ast<ExpAST>(ExpAST::TLA, n2, make_str("self")));
+    }
+    else if (name == "wait") {
+        check(
+            path.has_effect == false,
+            "`wait` is only allowed at the beginning of an atomic path"
+        );
+        check(
+            args.size() == 1,
+            "`wait` should have exactly one argument, i.e. the condition to wait for"
+        );
+        name = "__Wait";
+
+    }
+    else if (name == "exit") {
+        check(
+            path.has_exit == false,
+            "Two exit operations within one atomic path"
+        );
+        path.has_exit = true;
+        check(
+            args.size() == 0,
+            "`exit` should not have any arguments"
+        );
+        name = "__Exit";
+    }
+    else if (name == "assert") {
+        check(
+            args.size() == 1,
+            "`assert` should have exactly one argument, i.e. the condition"
+        );
+        name = "__Assert";
+    }
+    else if (name == "print") {
+        check(
+            args.size() == 1,
+            "`print` should have exactly one argument, i.e. the expression to print"
+        );
+        name = "__Print";
+    }
+    else if (name.starts_with("__")) {
+        assert(false && "Internal error: analyzing a primitive call twice");
+    }
+    else {
+        check(
+            false,
+            format("Unknown primitive call {}", name)
+        );
+    }
+
+    for (auto exp : args) {
+        check(
+            exp->rule == ExpAST::TLA,
+            "Arguments of primitive calls should not involve primitive calls"
+        );
+        mangleTLA(type, *exp->tla);
+    }
+}
+
+void TLABuilder::mangleTLA(const string& type, string& tla) {
+    string res;
+    size_t i = 0;
+
+    // Auxiliary functions.
+    auto is_ident_start = [](char c) {
+        return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || c == '_';
+    };
+    auto is_ident_char = [&is_ident_start](char c) {
+        return is_ident_start(c) || ('0' <= c && c <= '9');
+    };
+    auto get_ident = [&i, tla, &is_ident_char]() {
+        size_t start = i;
+        ++i;
+        while (i < tla.size() && is_ident_char(tla[i])) {
+            ++i;
+        }
+        return tla.substr(start, i - start);
+    };
+
+    while (i < tla.size()) {
+        if (is_ident_start(tla[i])) {
+            auto ident = get_ident();
+            if (type2localNames[type].contains(ident)) {
+                res += ident + "[self]";
+            } else if (localNames.contains(ident)) {
+                check(
+                    false,
+                    format("Identifier {} in expression {} cannot be accessed by node type {}",
+                        ident, tla, type)
+                );
+            } else {
+                // TODO: check if `ident` is undeclared.
+                res += ident;
+            }
+        } else {
+            res += tla[i];
+            ++i;
+        }
+    }
+    tla = res;
 }
 
 void TLABuilder::analyze(PropertyAST* property) {

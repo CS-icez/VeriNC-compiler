@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -34,6 +35,10 @@ T* make_ast(Args&&... args) {
 template <typename T>
 std::vector<T*>* make_vec(T* arg) {
     return new std::vector<T*>{arg};
+}
+
+inline std::string* make_str(const std::string& s) {
+    return new std::string(s);
 }
 
 constexpr auto n1 = std::make_tuple(nullptr);
