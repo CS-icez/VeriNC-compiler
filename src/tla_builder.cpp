@@ -4,6 +4,7 @@
 #include <cctype>
 #include <format>
 #include <iostream>
+#include <ranges>
 #include <stdexcept>
 #include "make_ast.hpp"
 using std::cout;
@@ -12,6 +13,7 @@ using std::format;
 using std::pair;
 using std::string;
 using std::vector;
+namespace rg = std::ranges;
 
 namespace std {
     template <>
@@ -90,6 +92,17 @@ void TLABuilder::analyze(SpecAST* spec) {
 
     // Complete routing tables.
     completeNexts();
+
+    check(
+        !nodetypes.empty(),
+        "No node type is declared"
+    );
+    for (const auto& type : nodetypes) {
+        check(
+            !type2nodes.empty(),
+            format("No node declared for node type {}", type)
+        );
+    }
 
     // Add pre-defined symbols.
     //! It is dangerous to store pointers to container elements.
@@ -268,31 +281,19 @@ string TLABuilder::findNext(const string& src, const string& dst,
     return res;
 }
 
+string TLABuilder::toUpper(const string& str) {
+    auto res = str;
+    rg::transform(str, res.begin(),
+        [](unsigned char c) { return std::toupper(c); });
+    return res;
+}
+
 void TLABuilder::addOurConstants() {
     // `null = null`
     strPool.emplace_back("null");
     configs.emplace_back(null, &strPool.back());
 
     // Auxiliary functions.
-    auto to_upper = [](const string& s) {
-        auto res = s;
-        std::transform(s.begin(), s.end(), res.begin(),
-            [](unsigned char c) { return std::toupper(c); });
-        return res;
-    };
-    auto join = [](const uset<string>& v, const string& sep) {
-        string res;
-        bool is_first = true;
-        for (const auto& s : v) {
-            if (is_first) {
-                is_first = false;
-            } else {
-                res += sep;
-            }
-            res += s;
-        }
-        return res;
-    };
     auto first_eq = [](const string& s) {
         return [s](const pair<string, string*>& p) { return p.first == s; };
     };
@@ -300,7 +301,7 @@ void TLABuilder::addOurConstants() {
     // Check that there is no duplicate if converting `nodetypes` to capitals.
     uset<string> capitals;
     for (const auto& type : nodetypes) {
-        capitals.insert(to_upper(type));
+        capitals.insert(toUpper(type));
     }
     check(
         capitals.size() == nodetypes.size(),
@@ -311,18 +312,18 @@ void TLABuilder::addOurConstants() {
 
     for (const auto& type : nodetypes) {
         // `TYPE_SET = {node1, node2, ...}`
-        auto type_set = to_upper(type) + "_SET";
+        auto type_set = toUpper(type) + "_SET";
         addNewName(type_set, false);
         t = string("{") + join(type2nodes[type], ", ") + "}";
         strPool.push_back(t);
         configs.emplace_back(type_set, &strPool.back());
 
         // `TYPE_NUM = Cardinality(TYPE_SET)`
-        auto type_num = to_upper(type) + "_NUM";
+        auto type_num = toUpper(type) + "_NUM";
         addNewName(type_num, false);
         t = format("Cardinality({})", type_set);
         strPool.push_back(t);
-        type2cvDecls[all].emplace_back(type_num, true, &strPool.back());
+        type2constDecls[all].emplace_back(type_num, &strPool.back());
     }
 
     // `NODE_SET = {node1, node2, ...}`
@@ -330,7 +331,7 @@ void TLABuilder::addOurConstants() {
     addNewName(node_set, false);
     t = string("{") + join(nodes, ", ") + "}";
     strPool.push_back(t);
-    type2cvDecls[all].emplace_back(node_set, true, &strPool.back());
+    type2constDecls[all].emplace_back(node_set, &strPool.back());
 
     // `MAX_LOSS = 0`
     auto max_loss = "MAX_LOSS";
@@ -353,17 +354,17 @@ void TLABuilder::addOurConstants() {
 }
 
 void TLABuilder::addOurVariables() {
-    // `__net_buf = [ip \in IP_SET |-> <<>>]`
-    strPool.push_back(R"([ip \in IP_SET |-> <<>>])");
-    type2cvDecls[all].emplace_back("__net_buf", false, &strPool.back());
+    // `__net_buf = [ip \in NODE_SET |-> <<>>]`
+    strPool.push_back(R"([ip \in NODE_SET |-> <<>>])");
+    type2varDecls[all].emplace_back("__net_buf", &strPool.back());
 
     // `__max_loss = MAX_LOSS`
     strPool.push_back("MAX_LOSS");
-    type2cvDecls[all].emplace_back("__max_loss", false, &strPool.back());
+    type2varDecls[all].emplace_back("__max_loss", &strPool.back());
 
     // `__max_out_of_order = MAX_OUT_OF_ORDER`
     strPool.push_back("MAX_OUT_OF_ORDER");
-    type2cvDecls[all].emplace_back("__max_out_of_order", false, &strPool.back());
+    type2varDecls[all].emplace_back("__max_out_of_order", &strPool.back());
 }
 
 void TLABuilder::addOurFns() {
@@ -383,20 +384,22 @@ void TLABuilder::addOurFns() {
     fns.emplace_back("__MinPsnElem", args, exp);
 
     // ```
-    // __Set2Seq(S) == LET
-    //   RECURSIVE F(_, _)
-    //   F(res_, S_) == IF S_ = {}
-    //     THEN res_
-    //     ELSE LET x == MinSeqElem(S_) IN F(Append(res_, x), S_ \ {x})
-    // IN F(<<>>, S)
+    // __Set2Seq(S) ==
+    //   LET
+    //     RECURSIVE F(_, _)
+    //     F(res_, S_) == IF S_ = {}
+    //       THEN res_
+    //       ELSE LET x == MinSeqElem(S_) IN F(Append(res_, x), S_ \ {x})
+    //   IN F(<<>>, S)
     // ```
     strPool.push_back(
-        "LET\n"
-        "  RECURSIVE F(_, _)\n"
-        "  F(res_, S_) == IF S_ = {}\n"
-        "    THEN res_\n"
-        "    ELSE LET x == MinSeqElem(S_) IN F(Append(res_, x), S_ \\ {x})\n"
-        "IN F(<<>>, S)"
+        "\n"
+        "      LET\n"
+        "        RECURSIVE F(_, _)\n"
+        "        F(res_, S_) == IF S_ = {}\n"
+        "          THEN res_\n"
+        "          ELSE LET x == MinSeqElem(S_) IN F(Append(res_, x), S_ \\ {x})\n"
+        "      IN F(<<>>, S)"
     );
     exp = &strPool.back();
     strPool.push_back("S");
@@ -444,6 +447,14 @@ void TLABuilder::analyze(ProtocolAST* protocol) {
             // Collect function.
             auto name = *protocol->name;
             addNewName(name);
+            check(
+                !protocol->params->empty(),
+                format(
+                    "Function {} should have at least one parameter, "
+                    "otherwise it is effectively a constant",
+                    name
+                )
+            );
             auto exp = protocol->exp;
             check(
                 exp->rule == ExpAST::TLA,
@@ -487,11 +498,12 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
         format("RHS of {} declaration {} should not involve primitive calls", cv, name)
     );
 
-    type2cvDecls[type].emplace_back(name, is_const, exp->tla);
     if (is_const) {
-        type2consts[type].insert(name);
+        type2constDecls[type].emplace_back(name, exp->tla);
+        type2constNames[type].insert(name);
     } else {
-        type2vars[type].insert(name);
+        type2varDecls[type].emplace_back(name, exp->tla);
+        type2varNames[type].insert(name);
     }
 }
 
@@ -804,7 +816,7 @@ void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assig
     );
 
     check(
-        type2vars[all].contains(ident) || type2vars[type].contains(ident),
+        type2varNames[all].contains(ident) || type2varNames[type].contains(ident),
         format("{} cannot be assigned by node type {}", ident, type)
     );
 
@@ -1022,19 +1034,23 @@ void TLABuilder::mangleTLA(const string& type, string& tla) {
     while (i < tla.size()) {
         if (is_ident_start(tla[i])) {
             auto ident = get_ident();
-            if (type2localNames[type].contains(ident)) {
-                res += ident + "[self]";
-            } else if (localNames.contains(ident)) {
+            if (localNames.contains(ident)) {
                 check(
-                    false,
-                    format("Identifier {} in expression {} cannot be accessed by node type {}",
-                        ident, tla, type)
+                    type == all || type2localNames[type].contains(ident),
+                    format(
+                        "Identifier {} in expression {} "
+                        "cannot be accessed by node type {}",
+                        ident, tla, type
+                    )
                 );
-            } else {
+                res += ident + "[self]";
+            }
+            else {
                 // TODO: check if `ident` is undeclared.
                 res += ident;
             }
-        } else {
+        }
+        else {
             res += tla[i];
             ++i;
         }
@@ -1054,6 +1070,7 @@ void TLABuilder::analyze(PropertyAST* property) {
     );
 
     auto tla = exp->tla;
+    mangleTLA(all, *tla);
     bool is_temporal = (tla->starts_with("[]") || tla->starts_with("<>"));
     if (is_temporal) {
         properties.emplace_back(name, tla);
@@ -1062,9 +1079,85 @@ void TLABuilder::analyze(PropertyAST* property) {
     }
 }
 
+string TLABuilder::exp2str(const ExpAST& exp) {
+    switch (exp.rule) {
+        case ExpAST::TLA:
+            return *exp.tla;
+        case ExpAST::PrimCall:
+            return *exp.fn_name;
+        default:
+            assert(false && "Internal error: unknown expression type");
+    }
+}
+
+vector<string> TLABuilder::exps2strs(const vector<ExpAST*>& exps) {
+    vector<string> res;
+    res.reserve(exps.size());
+    rg::transform(exps, std::back_inserter(res),
+        [this](const ExpAST* exp) { return this->exp2str(*exp); });
+    return res;
+}
+
 string TLABuilder::buildTLA() {
-    // TODO: implement.
-    return null;
+    string res;
+    res += format("---- MODULE {} ----\n\n", module_name);
+    res += "EXTENDS Integers, Sequences, FiniteSets, "
+        "TLC, Bitwise, FiniteSetsExt, SequencesExt\n\n";
+
+    res += "CONSTANTS\n";
+    for (const auto& [name, tla] : configs) {
+        res += format("  {},\n", name);
+    }
+    res[res.length() - 2] = '\n';
+
+    res += "(* --fair algorithm main {\n";
+
+    res += "  variables\n";
+    for (const auto& [type, vec] : type2varDecls) {
+        for (const auto& [name, tla] : vec) {
+            if (type == all) {
+                res += format("    {} = {};\n", name, *tla);
+            } else {
+                res += format(
+                    "    {} = [__n \\in {} |-> ({})];\n",
+                    name, toUpper(type) + "_SET", *tla
+                );
+            }
+        }
+    }
+    res += "\n";
+
+    res += "  define {\n";
+    for (const auto& [type, vec] : type2constDecls) {
+        for (const auto& [name, tla] : vec) {
+            if (type == all) {
+                res += format("    {} == {}\n", name, *tla);
+            } else {
+                res += format(
+                    "    {} == [__n \\in {} |-> ({})]\n",
+                    name, toUpper(type) + "_SET", *tla
+                );
+            }
+        }
+    }
+    res += "\n";
+    for (const auto& [name, params, tla] : fns) {
+        res += format("    {}({}) == {}\n", name, join(*params, ", "), *tla);
+    }
+    res += "  }\n\n";
+
+    // TODO: implement macro and process.
+    res += "} *)\n\n";
+
+    for (const auto& [name, tla] : invariants) {
+        res += format("{} == {}\n", name, *tla);
+    }
+    res += "\n";
+    for (const auto& [name, tla] : properties) {
+        res += format("{} == {}\n", name, *tla);
+    }
+
+    return res;
 }
 
 string TLABuilder::buildCFG() {

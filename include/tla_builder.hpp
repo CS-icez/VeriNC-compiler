@@ -1,6 +1,7 @@
 #pragma once
 #include "ast.hpp"
 #include <iostream>
+#include <ranges>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
@@ -127,11 +128,13 @@ private:
     // src -> (dst -> next)
     umap<string, umap<string, string>> nexts;
 
-    // type -> (name, is_const, init)
-    umap<string, vector<tuple<string, bool, string*>>> type2cvDecls;
-    umap<string, uset<string>> type2consts;
-    umap<string, uset<string>> type2vars;
-    // (name, args, exp)
+    // type -> (name, init)
+    umap<string, vector<tuple<string, string*>>> type2constDecls;
+    // type -> (name, init)
+    umap<string, vector<tuple<string, string*>>> type2varDecls;
+    umap<string, uset<string>> type2constNames;
+    umap<string, uset<string>> type2varNames;
+    // (name, params, exp)
     vector<tuple<string, vector<string*>*, string*>> fns;
 
     struct LabelMeta {
@@ -212,4 +215,31 @@ private:
 
     string buildTLA();
     string buildCFG();
+
+    string toUpper(const string& str);
+
+    template <typename T>
+    requires std::ranges::range<T>
+        && (std::same_as<typename T::value_type, std::string*>
+            || std::same_as<typename T::value_type, std::string>)
+    string join(const T& container, const string& sep) {
+        string res;
+        bool is_first = true;
+        for (const auto& s : container) {
+            if (is_first) {
+                is_first = false;
+            } else {
+                res += sep;
+            }
+            if constexpr (std::same_as<typename T::value_type, std::string*>) {
+                res += *s;
+            } else {
+                res += s;
+            }
+        }
+        return res;
+    }
+
+    string exp2str(const ExpAST& exp);
+    vector<string> exps2strs(const vector<ExpAST*>& exps);
 };
