@@ -32,10 +32,19 @@ T* make_ast(Args&&... args) {
     return std::apply(f, combined);
 }
 
+// template <typename T, typename... Args>
+// std::vector<T*>* make_vec(Args... args);
+
 template <typename T>
 std::vector<T*>* make_vec(T* arg) {
     return new std::vector<T*>{arg};
 }
+
+template <typename T>
+std::vector<T*>* make_vec() {
+    return new std::vector<T*>{};
+}
+
 
 inline std::string* make_str(const std::string& s) {
     return new std::string(s);

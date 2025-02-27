@@ -234,7 +234,7 @@ Assigns
 
 OptExps
     : Exps { $$ = $1; }
-    | %empty { $$ = nullptr; }
+    | %empty { $$ = make_vec<ExpAST>(); }
     ;
 
 Exps

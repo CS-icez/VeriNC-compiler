@@ -6,6 +6,8 @@
 #include <iostream>
 #include <stdexcept>
 #include "make_ast.hpp"
+using std::cout;
+using std::endl;
 using std::format;
 using std::pair;
 using std::string;
@@ -42,7 +44,7 @@ void TLABuilder::addNewName(const string& name, bool is_user_defined) {
         );
     } else {
         check(
-            !names.contains(name),
+            !names.contains(name) || name.find('$') != string::npos,
             format("Name {} has been declared for special use", name)
         );
     }
@@ -81,6 +83,8 @@ void TLABuilder::analyze(SpecAST* spec) {
                     analyze(property);
                 }
                 break;
+            default:
+                assert(false && "Internal error: unknown section type");
         }
     }
 
@@ -213,6 +217,8 @@ void TLABuilder::analyze(TopologyAST* topology) {
                 }
             }
             break;
+        default:
+            assert(false && "Internal error: unknown topology type");
     }
 }
 
@@ -449,6 +455,8 @@ void TLABuilder::analyze(ProtocolAST* protocol) {
         case ProtocolAST::Thread:
             analyzeThread(*protocol->type->ident, *protocol->name, protocol->stmts);
             break;
+        default:
+            assert(false && "Internal error: unknown protocol type");
     }
 }
 
@@ -515,7 +523,8 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
     
     check(!stmts.empty(), "Thread should not be empty");
 
-    for (auto stmt : stmts) {
+    for (auto it = stmts.begin(); it != stmts.end(); ++it) {
+        StmtAST* stmt = *it;
         switch (stmt->rule) {
             case StmtAST::Breakpoint:
                 if (label.name != first) {
@@ -523,6 +532,19 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
                         !label.stmts.empty(),
                         format("No statement follows label {}", label.name)
                     );
+                    check(
+                        (path.has_recv == true && path.has_sendlike == true)
+                            || path.has_recv == false
+                            || path.has_sendlike == false,
+                        "The following patterns are not allowed. "
+                        "This is a limitation of the current implementation. "
+                        "(1) `if (cond) { receive(); } send(pkt);` "
+                        "(2) receive(); if (cond) { send(); } "
+                        "(3) if (cond1) { receive(); } if (cond2) { send(); } "
+                        "Try redesigning execution logic or setting a breakpoint."
+                    );
+                    label.has_recv = path.has_recv;
+                    label.has_sendlike = path.has_sendlike;
                     labels.push_back(label);
                 }
                 label = LabelMeta();
@@ -542,23 +564,29 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
             case StmtAST::PrimCall:
                 check_after_exit();
                 analyzePrimCallStmt(type, *stmt->name, *stmt->exps, path);
-                path.has_effect = true;
                 label.stmts.push_back(stmt);
                 break;
             case StmtAST::Temp:
                 check_after_exit();
-                analyzeTempStmt(type, *stmt->assigns, label.temps);
+                path.has_effect &= analyzeTempStmt(type, *stmt->assigns, label.temps, path);
                 label.stmts.push_back(stmt);
                 break;
             case StmtAST::If:
                 check_after_exit();
                 path = analyzeIfStmt(type, *stmt, path, label);
-                // TODO: check branch_has_label.
+                check(
+                    path.branch_has_label == false
+                        || it + 1 == stmts.end()
+                        || (*(it + 1))->rule == StmtAST::Breakpoint,
+                    "`if` statement must be followed by a breakpoint "
+                    "if any of its branches has a breakpoint"   
+                );
                 label.stmts.push_back(stmt);
                 break;
             case StmtAST::While:
                 check_after_exit();
-                // TODO: implement.
+                path = analyzeWhileStmt(type, *stmt, path, label);
+                label.stmts.push_back(stmt);
                 break;
             case StmtAST::Break:
                 [[fallthrough]];
@@ -568,6 +596,8 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
                     format("Break and continue statements are not supported for now")
                 );
                 break;
+            default:
+                assert(false && "Internal error: unknown statement type");
         }
     }
 
@@ -604,16 +634,36 @@ TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST& stmt
             && "Internal error: elif condition and statement list size mismatch");
         for (auto elif_stmts : *stmt.vec_elif_stmts) {
             auto [elif_path, elif_label_meta] = analyzeBranch(type, *elif_stmts, path, has_temp);
-            res_path &= elif_path;
+            res_path |= elif_path;
             label_meta.branches.push_back(std::move(elif_label_meta));
         }
     }
     
     if (stmt.else_stmts != nullptr) {
         auto [else_path, else_label_meta] = analyzeBranch(type, *stmt.else_stmts, path, has_temp);
-        res_path &= else_path;
+        res_path |= else_path;
         label_meta.branches.push_back(std::move(else_label_meta));
+    } else {
+        res_path |= path;
     }
+
+    return res_path;
+}
+
+TLABuilder::PathMeta TLABuilder::analyzeWhileStmt(const string& type, StmtAST& stmt,
+    PathMeta path, LabelMeta& label_meta) {
+    assert(stmt.rule == StmtAST::While && "Internal error: not a while statement");
+    
+    check(
+        stmt.exp->rule == ExpAST::TLA,
+        "While condition should not involve primitive calls"
+    );
+    mangleTLA(type, *stmt.exp->tla);
+
+    auto has_temp = !label_meta.temps.empty();
+    auto [res_path, while_label_meta] = analyzeBranch(type, *stmt.stmts, path, has_temp);
+    res_path |= path;
+    label_meta.branches.push_back(std::move(while_label_meta));
 
     return res_path;
 }
@@ -643,11 +693,12 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
     if (stmts.front()->rule != StmtAST::Breakpoint) {
         stmts.insert(
             stmts.begin(),
-            make_ast<StmtAST>(StmtAST::Breakpoint, make_str(null), n7)
+            make_ast<StmtAST>(StmtAST::Breakpoint, make_str(fake_label), n7)
         );
     }
 
-    for (auto stmt : stmts) {
+    for (auto it = stmts.begin(); it != stmts.end(); ++it) {
+        StmtAST* stmt = *it;
         switch (stmt->rule) {
             case StmtAST::Breakpoint:
                 if (label.name != first) {
@@ -660,12 +711,26 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
                         !label.stmts.empty(),
                         format("No statement follows label {}", label.name)
                     );
+                    // TODO: correct?
+                    check(
+                        (path.has_recv == true && path.has_sendlike == true)
+                            || path.has_recv == false
+                            || path.has_sendlike == false,
+                        "The following patterns are not allowed. "
+                        "This is a limitation of the current implementation. "
+                        "(1) `if (cond) { receive(); } send(pkt);` "
+                        "(2) receive(); if (cond) { send(); } "
+                        "(3) if (cond1) { receive(); } if (cond2) { send(); } "
+                        "Try redesigning execution logic or setting a breakpoint."
+                    );
+                    label.has_recv = path.has_recv;
+                    label.has_sendlike = path.has_sendlike;
                     labels.push_back(label);
                     path.branch_has_label = true;
                 }
                 label = LabelMeta();
                 label.name = *stmt->name;
-                addNewName(label.name);
+                addNewName(label.name, label.name != fake_label);
                 path = PathMeta();
                 break;
             case StmtAST::Assign:
@@ -680,18 +745,24 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
             case StmtAST::PrimCall:
                 check_after_exit();
                 analyzePrimCallStmt(type, *stmt->name, *stmt->exps, path);
-                path.has_effect = true;
                 label.stmts.push_back(stmt);
                 break;
             case StmtAST::Temp:
                 check_after_exit();
-                analyzeTempStmt(type, *stmt->assigns, label.temps);
+                path.has_effect &= analyzeTempStmt(type, *stmt->assigns, label.temps, path);
                 label.stmts.push_back(stmt);
                 break;
             case StmtAST::If:
                 // TODO: test no problem with nested branches.
                 check_after_exit();
                 path = analyzeIfStmt(type, *stmt, path, label);
+                check(
+                    path.branch_has_label == false
+                        || it + 1 == stmts.end()
+                        || (*(it + 1))->rule == StmtAST::Breakpoint,
+                    "`if` statement must be followed by a breakpoint "
+                    "if any of its branches has a breakpoint"
+                );
                 label.stmts.push_back(stmt);
                 break;
             case StmtAST::While:
@@ -702,7 +773,8 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
                     "Try setting a breakpoint before the while loop, "
                     "or declaring temporary values inside the while loop."
                 );
-                // TODO: implement.
+                path = analyzeWhileStmt(type, *stmt, path, label);
+                label.stmts.push_back(stmt);
                 break;
             case StmtAST::Break:
                 [[fallthrough]];
@@ -712,6 +784,8 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
                     format("Break and continue statements are not supported for now")
                 );
                 break;
+            default:
+                assert(false && "Internal error: unknown statement type");
         }
     }
 
@@ -756,6 +830,7 @@ void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assig
 void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
     vector<ExpAST*>& args, PathMeta& path) {
     if (name == "send" || name == "send_m" || name == "multicast") {
+        path.has_effect = true;
         check(
             path.has_sendlike == false,
             "Two send-like operations within one atomic path"
@@ -772,7 +847,8 @@ void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
         if (name == "send") {
             check(
                 args.size() == 1,
-                "`send` should have exactly one argument, i.e. the packet to be sent"
+                "`send` should have exactly one argument, "
+                "i.e. the packet to be sent"
             );
             name = path.has_recv == true ? "__DropSend" : "__Send";
         } else if (name == "send_m") {
@@ -794,21 +870,7 @@ void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
         }
     }
     else if (name == "receive") {
-        check(
-            path.has_recv == false,
-            "Two receive operations within one atomic path"
-        );
-        path.has_recv = true;
-        check(
-            path.has_sendlike == false,
-            "Calling `receive` after send-like operations is not allowed within one atomic path"
-        );
-        check(
-            args.size() == 0,
-            "`receive` should not have any arguments"
-        );
-        name = "__Receive";
-        args.push_back(make_ast<ExpAST>(ExpAST::TLA, n2, make_str("self")));
+        analyzeReceiveCall(type, name, args, path);
     }
     else if (name == "wait") {
         check(
@@ -817,7 +879,8 @@ void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
         );
         check(
             args.size() == 1,
-            "`wait` should have exactly one argument, i.e. the condition to wait for"
+            "`wait` should have exactly one argument, "
+            "i.e. the condition to wait for"
         );
         name = "__Wait";
 
@@ -836,15 +899,17 @@ void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
     }
     else if (name == "assert") {
         check(
-            args.size() == 1,
-            "`assert` should have exactly one argument, i.e. the condition"
+            args.size() == 2,
+            "`assert` should have exactly two argument, "
+            "i.e. the condition and the error message"
         );
         name = "__Assert";
     }
     else if (name == "print") {
         check(
             args.size() == 1,
-            "`print` should have exactly one argument, i.e. the expression to print"
+            "`print` should have exactly one argument, "
+            "i.e. the expression to print"
         );
         name = "__Print";
     }
@@ -867,10 +932,32 @@ void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
     }
 }
 
-void TLABuilder::analyzeTempStmt(const string& type, vector<AssignAST*>& assigns,
-    vector<pair<string, string*>>& temps) {
+void TLABuilder::analyzeReceiveCall([[maybe_unused]] const string& type, string& name,
+    vector<ExpAST*>& args, PathMeta& path) {
+    assert(name == "receive" && "Internal error: not a receive call");
+    path.has_effect = true;
+    check(
+        path.has_recv == false,
+        "Two receive operations within one atomic path"
+    );
+    path.has_recv = true;
+    check(
+        path.has_sendlike == false,
+        "Calling `receive` after send-like operations is not allowed within one atomic path"
+    );
+    check(
+        args.size() == 0,
+        "`receive` should not have any arguments"
+    );
+    name = "__Receive";
+    args.push_back(make_ast<ExpAST>(ExpAST::TLA, n2, make_str("self")));
+}
+
+bool TLABuilder::analyzeTempStmt(const string& type, vector<AssignAST*>& assigns,
+    vector<pair<string, ExpAST*>>& temps, PathMeta& path) {
     assert(!assigns.empty() && "Ill-formed AST: empty assignment list");
     
+    bool has_effect = false;
     for (auto assign : assigns) {
         // TODO: record names in a stack and check comprehensively.
         check(
@@ -882,15 +969,34 @@ void TLABuilder::analyzeTempStmt(const string& type, vector<AssignAST*>& assigns
             format("LHS of temporary value declaration "
                 "should be an identifier", *assign->ident)
         );
+
         auto exp = assign->exp;
-        check(
-            exp->rule == ExpAST::TLA,
-            format("RHS of temporary value declaration "
-                "should not involve primitive calls", *assign->ident)
-        );
-        mangleTLA(type, *exp->tla);
-        temps.emplace_back(*assign->ident, exp->tla);
+        switch (exp->rule) {
+            case ExpAST::TLA:
+                mangleTLA(type, *exp->tla);
+                break;
+            case ExpAST::PrimCall:
+                assert(!exp->fn_name->starts_with("__")
+                    && "Internal error: analyzing a temporary value declaration twice");
+                check(
+                    *exp->fn_name == "receive",
+                    format(
+                        "RHS of temporary value declaration "
+                        "should not involve primitive calls other than `receive`", 
+                        *assign->ident
+                    )
+                );
+                analyzeReceiveCall(type, *exp->fn_name, *exp->args, path);
+                has_effect = true;
+                break;
+            default:
+                assert(false && "Internal error: unknown expression type");
+        }
+
+        temps.emplace_back(*assign->ident, exp);
     }
+
+    return has_effect;
 }
 
 void TLABuilder::mangleTLA(const string& type, string& tla) {

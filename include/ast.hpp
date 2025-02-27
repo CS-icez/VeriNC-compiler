@@ -198,15 +198,15 @@ struct StmtAST {
 struct ExpAST {
     enum Rule { PrimCall, TLA } rule;
     string* fn_name;
-    vector<ExpAST*>* params;
+    vector<ExpAST*>* args;
     string* tla;
 
-    ExpAST(Rule _rule, string* _fn_name, vector<ExpAST*>* _params, string* _tla) :
-        rule(_rule), fn_name(_fn_name), params(_params), tla(_tla) { }
+    ExpAST(Rule _rule, string* _fn_name, vector<ExpAST*>* _args, string* _tla) :
+        rule(_rule), fn_name(_fn_name), args(_args), tla(_tla) { }
 
     ~ExpAST() {
         delete_if(fn_name);
-        delete_if(params);
+        delete_if(args);
         delete_if(tla);
     }
 };

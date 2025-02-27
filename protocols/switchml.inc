@@ -67,11 +67,10 @@ protocol {
     L_ClientRetx:
         wait($pending # null$);
         while ($TRUE$) {
-            temp pkt = receive();
             wait($pending # {}$);
             temp i = $MinElem(pending)$;
             wait($requests[i] \notin Seq2Set(__net_buf[SW])$);
-            send($requests[pkt.psn]$);
+            send($requests[i]$);
         }
     }
 

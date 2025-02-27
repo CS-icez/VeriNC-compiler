@@ -1,5 +1,6 @@
 #pragma once
 #include "ast.hpp"
+#include <iostream>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
@@ -26,6 +27,7 @@ private:
 
     static inline const string null = "null";
     static inline const string all = "all";
+    static inline const string fake_label = "__$fake_label";
 
     // https://github.com/DistributedPlusCal/DistributedPlusCal/blob/master/tlatools/TLA%2B%20Tools/pcal/PlusCal.tla
     // This list is not actually complete. There are other reserved words like `Init`.
@@ -51,6 +53,58 @@ private:
         "wait", "exit", "assert", "print",
         "forall", "exists", "in", "let",
         "self"
+    };
+
+    struct TriBool {
+        enum TriBoolValue { True, False, Both } value;
+        
+        TriBool() : value(False) { }
+        explicit TriBool(TriBoolValue _value) : value(_value) { }
+        TriBool(bool _value) : value(_value ? True : False) { }
+        TriBool& operator=(bool _value) {
+            value = _value ? True : False;
+            return *this;
+        }
+
+        bool operator==(TriBool _value) const {
+            return value == _value.value;
+        }
+        bool operator==(bool _value) const {
+            return *this == TriBool(_value);
+        }
+        operator bool() const = delete;
+
+        bool is_both() const {
+            return value == Both;
+        }
+
+        TriBool operator&(const TriBool& other) const {
+            if (value == True || other.value == True) {
+                return TriBool(True);
+            } else if (value == False && other.value == False) {
+                return TriBool(False);
+            } else {
+                return TriBool(Both);
+            }
+        }
+        TriBool& operator&=(const TriBool& other) {
+            return *this = *this & other;
+        }
+        TriBool operator|(const TriBool& other) const {
+            return value == other.value ? TriBool(value) : TriBool(Both);
+        }
+        TriBool& operator|=(const TriBool& other) {
+            return *this = *this | other;
+        }
+
+        friend std::ostream& operator<<(std::ostream& os, const TriBool& obj) {
+            switch (obj.value) {
+                case True: os << "true"; break;
+                case False: os << "false"; break;
+                case Both: os << "both"; break;
+            }
+            return os;
+        }
     };
 
     vector<string> strPool;
@@ -84,8 +138,9 @@ private:
         string name;
         vector<StmtAST*> stmts;
         vector<vector<LabelMeta>> branches;
-        vector<pair<string, string*>> temps;
-        bool has_recv;
+        vector<pair<string, ExpAST*>> temps;
+        TriBool has_recv;
+        TriBool has_sendlike;
     };
     // type -> (name -> labels)
     umap<string, umap<string, vector<LabelMeta>>> type2threads;
@@ -104,41 +159,6 @@ private:
     void analyzeCV(const string& type, bool is_const, AssignAST* assign);
     void analyzeThread(const string& type, const string& name, vector<StmtAST*>* stmts);
     
-    struct TriBool {
-        enum TriBoolValue { True, False, Both } value;
-        
-        TriBool() : value(False) { }
-        explicit TriBool(TriBoolValue _value) : value(_value) { }
-        explicit TriBool(bool _value) : value(_value ? True : False) { }
-        TriBool& operator=(bool _value) {
-            value = _value ? True : False;
-            return *this;
-        }
-
-        bool operator==(TriBool _value) const {
-            return value == _value.value;
-        }
-        bool operator==(bool _value) const {
-            return *this == TriBool(_value);
-        }
-        operator bool() const = delete;
-
-        bool is_both() const {
-            return value == Both;
-        }
-
-        static inline TriBool merge(const TriBool& a, const TriBool& b) {
-            return a.value == b.value ? a : TriBool(Both);
-        }
-        TriBool operator&(const TriBool& other) const {
-            return merge(*this, other);
-        }
-        TriBool& operator&=(const TriBool& other) {
-            *this = merge(*this, other);
-            return *this;
-        }
-    };
-
     struct PathMeta {
         TriBool has_recv;
         TriBool has_sendlike;
@@ -154,18 +174,31 @@ private:
             branch_has_label &= other.branch_has_label;
             return *this;
         }
+
+        PathMeta& operator|=(const PathMeta& other) {
+            has_recv |= other.has_recv;
+            has_sendlike |= other.has_sendlike;
+            has_exit |= other.has_exit;
+            has_effect |= other.has_effect;
+            branch_has_label |= other.branch_has_label;
+            return *this;
+        }
     };
     auto analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
         -> vector<LabelMeta>;
     PathMeta analyzeIfStmt(const string& type, StmtAST& stmt, PathMeta path,
+        LabelMeta& label_meta);
+    PathMeta analyzeWhileStmt(const string& type, StmtAST& stmt, PathMeta path,
         LabelMeta& label_meta);
     auto analyzeBranch(const string& type, vector<StmtAST*>& stmts, 
         PathMeta path, bool has_temp) -> pair<PathMeta, vector<LabelMeta>>;
     void analyzeAssignStmt(const string& type, vector<AssignAST*>& assigns);
     void analyzePrimCallStmt(const string& type, string& name,
         vector<ExpAST*>& args, PathMeta& path);
-    void analyzeTempStmt(const string& type, vector<AssignAST*>& assigns,
-        vector<pair<string, string*>>& temps);
+    void analyzeReceiveCall(const string& type, string& name,
+        vector<ExpAST*>& args, PathMeta& path);
+    bool analyzeTempStmt(const string& type, vector<AssignAST*>& assigns,
+        vector<pair<string, ExpAST*>>& temps, PathMeta& path);
 
     void completeNexts();
     string findNext(const string& src, const string& dst,
