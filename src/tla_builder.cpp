@@ -106,7 +106,7 @@ void TLABuilder::analyze(SpecAST* spec) {
 
     // Add pre-defined symbols.
     //! It is dangerous to store pointers to container elements.
-    strPool.reserve(100);
+    strPool.reserve(200);
     vecStrPool.reserve(100);
     addOurConstants();
     addOurVariables();
@@ -354,8 +354,8 @@ void TLABuilder::addOurConstants() {
 }
 
 void TLABuilder::addOurVariables() {
-    // `__net_buf = [ip \in NODE_SET |-> <<>>]`
-    strPool.push_back(R"([ip \in NODE_SET |-> <<>>])");
+    // `__net_buf = [__n \in NODE_SET |-> <<>>]`
+    strPool.push_back(R"([__n \in NODE_SET |-> <<>>])");
     type2varDecls[all].emplace_back("__net_buf", &strPool.back());
 
     // `__max_loss = MAX_LOSS`
@@ -365,6 +365,10 @@ void TLABuilder::addOurVariables() {
     // `__max_out_of_order = MAX_OUT_OF_ORDER`
     strPool.push_back("MAX_OUT_OF_ORDER");
     type2varDecls[all].emplace_back("__max_out_of_order", &strPool.back());
+
+    // '__node_terminated = [__n \in NODE_SET |-> FALSE])'
+    strPool.push_back(R"([__n \in NODE_SET |-> FALSE])");
+    type2varDecls[all].emplace_back("__node_terminated", &strPool.back());
 }
 
 void TLABuilder::addOurFns() {
@@ -429,6 +433,24 @@ void TLABuilder::addOurFns() {
     vecStrPool.push_back({arg1, arg2, arg3});
     args = &vecStrPool.back();
     fns.emplace_back("__InsertAtEnd", args, exp);
+
+    // `__Receive(__n) == Head(__net_buf[__n])`
+    strPool.push_back("Head(__net_buf[__n])");
+    exp = &strPool.back();
+    strPool.push_back("__n");
+    arg1 = &strPool.back();
+    vecStrPool.push_back({arg1});
+    args = &vecStrPool.back();
+    fns.emplace_back("__Receive", args, exp);
+
+    // `__Node(thread) == Head(thread)`
+    strPool.push_back("Head(thread)");
+    exp = &strPool.back();
+    strPool.push_back("thread");
+    arg1 = &strPool.back();
+    vecStrPool.push_back({arg1});
+    args = &vecStrPool.back();
+    fns.emplace_back("__Node", args, exp);
 }
 
 void TLABuilder::analyze(ProtocolAST* protocol) {
@@ -1043,11 +1065,15 @@ void TLABuilder::mangleTLA(const string& type, string& tla) {
                         ident, tla, type
                     )
                 );
-                res += ident + "[self]";
+                res += ident + "[__Node(self)]";
             }
             else {
                 // TODO: check if `ident` is undeclared.
-                res += ident;
+                if (ident == "self") {
+                    res += "__Node(self)";
+                } else {
+                    res += ident;
+                }
             }
         }
         else {
@@ -1109,6 +1135,7 @@ string TLABuilder::buildTLA() {
         res += format("  {},\n", name);
     }
     res[res.length() - 2] = '\n';
+    res += "\n";
 
     res += "(* --fair algorithm main {\n";
 
@@ -1144,9 +1171,16 @@ string TLABuilder::buildTLA() {
     for (const auto& [name, params, tla] : fns) {
         res += format("    {}({}) == {}\n", name, join(*params, ", "), *tla);
     }
-    res += "  }\n\n";
+    res += "  }\n\n\n";
 
-    // TODO: implement macro and process.
+    res += buildMacros();
+    res += "\n\n";
+
+    for (const auto& [type, threads] : type2threads) {
+        for (const auto& [name, labels] : threads) {
+            res += buildProcess(type, name, labels);
+        }
+    }
     res += "} *)\n\n";
 
     for (const auto& [name, tla] : invariants) {
@@ -1158,6 +1192,70 @@ string TLABuilder::buildTLA() {
     }
 
     return res;
+}
+
+string TLABuilder::buildMacros() {
+    const string ident = "  ";
+    auto add_indent = [&ident](const std::string& s) {
+        string res = ident;
+        for (auto it = s.begin(); it != s.end(); ++it) {
+            res += *it;
+            if (*it == '\n' && (it + 1) != s.end()) {
+                res += ident;
+            }
+        }
+        return res;
+    };
+
+    string res = "";
+    string m = "";
+
+    // TODO: implement
+    // __Send
+
+    // __DropSend
+
+    // __SendM
+
+    // __DropSendM
+
+    // __Multicast
+
+    // __DropMulticast
+
+    // __Wait
+    m = "macro __Wait(cond) {\n"
+        "  await cond;\n"
+        "}\n";
+    res += add_indent(m) + "\n";
+
+    // __Exit
+    m = "macro __Exit() {\n"
+        "  __node_terminated[__Node(self)] := TRUE;\n"
+        "}\n";
+    res += add_indent(m) + "\n";
+
+    // __Assert
+    m = "macro __Assert(cond, msg) {\n"
+        "  with (t = Assert(cond, msg)) {\n"
+        "    assert t;\n"
+        "  }\n"
+        "}\n";
+    res += add_indent(m) + "\n";
+
+    // __Print
+    m = "macro __Print(__x) {\n"
+        "  print x;\n"
+        "}\n";
+    res += add_indent(m) + "\n";
+
+    return res;
+}
+
+string TLABuilder::buildProcess(const string& type, const string& name,
+    const vector<LabelMeta>& stmts) {
+    // TODO: implement
+    return null;
 }
 
 string TLABuilder::buildCFG() {

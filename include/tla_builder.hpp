@@ -216,6 +216,10 @@ private:
     string buildTLA();
     string buildCFG();
 
+    string buildMacros();
+    string buildProcess(const string& type, const string& name,
+        const vector<LabelMeta>& stmts);
+
     string toUpper(const string& str);
 
     template <typename T>
