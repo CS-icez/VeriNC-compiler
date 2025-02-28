@@ -123,7 +123,8 @@ private:
 
     uset<string> nodetypes;
     uset<string> nodes;
-    umap<string, uset<string>> type2nodes;
+    vector<string> nodes_in_order;
+    umap<string, vector<string>> type2nodes;
     umap<string, uset<string>> links;
     // src -> (dst -> next)
     umap<string, umap<string, string>> nexts;
@@ -145,8 +146,8 @@ private:
         TriBool has_recv;
         TriBool has_sendlike;
     };
-    // type -> (name -> labels)
-    umap<string, umap<string, vector<LabelMeta>>> type2threads;
+    // (type, name, labels)
+    vector<tuple<string, string, vector<LabelMeta>>> threads;
 
 
     void check(bool cond, const string& msg);
@@ -160,7 +161,7 @@ private:
 
     // Analyze constant/variable declaration.
     void analyzeCV(const string& type, bool is_const, AssignAST* assign);
-    void analyzeThread(const string& type, const string& name, vector<StmtAST*>* stmts);
+    void analyzeThread(const string& type, const string& name, vector<StmtAST*>& stmts);
     
     struct PathMeta {
         TriBool has_recv;

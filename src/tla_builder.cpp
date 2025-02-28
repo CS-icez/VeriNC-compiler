@@ -7,6 +7,7 @@
 #include <ranges>
 #include <stdexcept>
 #include "make_ast.hpp"
+#include "utils.hpp"
 using std::cout;
 using std::endl;
 using std::format;
@@ -159,7 +160,8 @@ void TLABuilder::analyze(TopologyAST* topology) {
             for (auto node : *topology->nodes) {
                 addNewName(*node);
                 nodes.insert(*node);
-                type2nodes[type].insert(*node);
+                nodes_in_order.push_back(*node);
+                type2nodes[type].push_back(*node);
 
                 // Initialize nexts.
                 for (auto s : nodes) {
@@ -330,7 +332,7 @@ void TLABuilder::addOurConstants() {
     // `NODE_SET = {node1, node2, ...}`
     auto node_set = "NODE_SET";
     addNewName(node_set, false);
-    t = string("{") + join(nodes, ", ") + "}";
+    t = string("{") + join(nodes_in_order, ", ") + "}";
     strPool.push_back(t);
     type2constDecls[all].emplace_back(node_set, &strPool.back());
 
@@ -339,6 +341,7 @@ void TLABuilder::addOurConstants() {
     bool not_defined = (std::find_if(configs.begin(), configs.end(),
         first_eq(max_loss)) == configs.end());
     if (not_defined) {
+        addNewName(max_loss, false);
         strPool.push_back("0");
         configs.emplace_back(max_loss, &strPool.back());
     }
@@ -347,9 +350,20 @@ void TLABuilder::addOurConstants() {
     not_defined = (std::find_if(configs.begin(), configs.end(),
         first_eq(max_out_of_order)) == configs.end());
     if (not_defined) {
+        addNewName(max_out_of_order, false);
         strPool.push_back("0");
         configs.emplace_back(max_out_of_order, &strPool.back());
     }
+
+    // `__next_hop = <<src1, dst1>> :> next1 @@ ...`
+    vector<string> entries;
+    for (const auto& src : nodes_in_order) {
+        for (const auto& dst : nodes_in_order) {
+            entries.push_back(format("<<{}, {}>> :> {}", src, dst, nexts[src][dst]));
+        }
+    }
+    strPool.push_back(join(entries, " @@ "));
+    type2constDecls[all].emplace_back("__next_hop", &strPool.back());
 
     // TODO: symmetry.
 }
@@ -487,7 +501,8 @@ void TLABuilder::analyze(ProtocolAST* protocol) {
             break;
         }
         case ProtocolAST::Thread:
-            analyzeThread(*protocol->type->ident, *protocol->name, protocol->stmts);
+            assert(protocol->stmts != nullptr&& "Internal error: thread should have statements");
+            analyzeThread(*protocol->type->ident, *protocol->name, *protocol->stmts);
             break;
         default:
             assert(false && "Internal error: unknown protocol type");
@@ -531,14 +546,17 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
 }
 
 void TLABuilder::analyzeThread(const string& type, const string& name,
-    vector<StmtAST*>* stmts) {
+    vector<StmtAST*>& stmts) {
+    DEBUG("Analyzing thread {}...", name);
     check(
         nodetypes.contains(type),
         format("Declare thread of unknown node type {}", type)
     );
     addNewName(name);
 
-    type2threads[type][name] = analyzeThreadStmts(type, *stmts);
+    threads.emplace_back(type, name, analyzeThreadStmts(type, stmts));
+    // analyzeThreadStmts(type, stmts);
+    DEBUG("Thread {} analyzed", name);
 }
 
 auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
@@ -562,8 +580,8 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
         );
         check(
             (path.has_recv == true && path.has_sendlike == true)
-                || path.has_recv == false
-                || path.has_sendlike == false,
+            || path.has_recv == false
+            || path.has_sendlike == false,
             "The following patterns are not allowed. "
             "This is a limitation of the current implementation. "
             "(1) `if (cond) { receive(); } send(pkt);` "
@@ -574,6 +592,7 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
         label.has_recv = path.has_recv;
         label.has_sendlike = path.has_sendlike;
         labels.push_back(label);
+        DEBUG("Breakpoint {} collected", label.name);
     };
     
     check(!stmts.empty(), "Thread should not be empty");
@@ -587,6 +606,7 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
                 }
                 label = LabelMeta();
                 label.name = *stmt->name;
+                DEBUG("Encounter breakpoint {}...", label.name);
                 addNewName(label.name);
                 path = PathMeta();
                 break;
@@ -1188,11 +1208,9 @@ string TLABuilder::buildTLA() {
     res += buildMacros();
     res += "\n";
 
-    for (const auto& [type, threads] : type2threads) {
-        for (const auto& [name, labels] : threads) {
-            res += "\n";
-            res += buildProcess(type, name, labels);
-        }
+    for (const auto& [type, name, labels] : threads) {
+        res += "\n";
+        res += buildProcess(type, name, labels);
     }
     res += "} *)\n\n";
 
@@ -1224,9 +1242,72 @@ string TLABuilder::buildMacros() {
     string m = "";
 
     // TODO: implement
+    // __Assert
+    m = "macro __Assert(__cond, __msg) {\n"
+    "  with (__b = Assert(__cond, __msg)) {\n"
+    "    assert __b;\n"
+    "  }\n"
+    "}\n";
+    res += add_indent(m) + "\n";
+
+    // __Drop
+    m = "macro __Drop() {\n"
+        "  __Assert(__net_buf[__Node(self)] # {}, \"Drop: empty buffer\");\n"
+        "  net_buf[__Node(self)] := Tail(@);\n"
+        "}\n";
+    res += add_indent(m) + "\n";
+
     // __Send
+    m = "macro __Send(__pkt) {\n"
+        "  with (__h = __next_hop[__Node(self), __pkt.dst]) {"
+        "    either {\n"
+        "      await __max_out_of_order > 0;\n"
+        "      await __OutOfOrderRange(__net_buf[__h]) # {};\n"
+        "      with (__pos \\in __OutOfOrderRange(__net_buf[__h])) {\n"
+        "        __net_buf[__h] := __InsertAtEnd(@, __pos, pkt);\n"
+        "      };\n"
+        "      __max_out_of_order := __max_out_of_order - 1;\n"
+        "    } or {\n"
+        "      await __max_loss > 0;\n"
+        "      __max_loss := __max_loss - 1;\n"
+        "    } or {\n"
+        "      __net_buf[__h] := Append(@, __pkt);\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
+    res += add_indent(m) + "\n";
 
     // __DropSend
+    m = "macro __DropSend(__pkt) {\n"
+        "  __Assert(__net_buf[__Node(self)] # {}, \"DropSend: empty buffer\");\n"
+        "  with (__s = __Node(self), __h = __next_hop[__s, __pkt.dst]) {"
+        "    either {\n"
+        "      await __max_out_of_order > 0;\n"
+        "      await __OutOfOrderRange(__net_buf[__h]) # {};\n"
+        "      with (__pos \\in __OutOfOrderRange(__net_buf[__h])) {\n"
+        "        if (__s = __h) {\n"
+        "          __net_buf[__h] := Tail(__InsertAtEnd(@, __pos, pkt));\n"
+        "        } else {\n"
+        "          __net_buf[__h] := __InsertAtEnd(@, __pos, pkt) ||\n"
+        "          __net_buf[__s] := Tail(@);\n"
+        "        }\n"
+        "      };\n"
+        "      __max_out_of_order := __max_out_of_order - 1;\n"
+        "    } or {\n"
+        "      await __max_loss > 0;\n"
+        "      __max_loss := __max_loss - 1;\n"
+        "      __net_buf[__s] := Tail(@);\n"
+        "    } or {\n"
+        "      if (__s = __h) {\n"
+        "        __net_buf[__h] := Tail(Append(@, __pkt));\n"
+        "      } else {\n"
+        "        __net_buf[__h] := Append(@, __pkt) ||\n"
+        "        __net_buf[__s] := Tail(@);\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
+    res += add_indent(m) + "\n";
 
     // __SendM
 
@@ -1237,8 +1318,8 @@ string TLABuilder::buildMacros() {
     // __DropMulticast
 
     // __Wait
-    m = "macro __Wait(cond) {\n"
-        "  await cond;\n"
+    m = "macro __Wait(__cond) {\n"
+        "  await __cond;\n"
         "}\n";
     res += add_indent(m) + "\n";
 
@@ -1248,17 +1329,9 @@ string TLABuilder::buildMacros() {
         "}\n";
     res += add_indent(m) + "\n";
 
-    // __Assert
-    m = "macro __Assert(cond, msg) {\n"
-        "  with (t = Assert(cond, msg)) {\n"
-        "    assert t;\n"
-        "  }\n"
-        "}\n";
-    res += add_indent(m) + "\n";
-
     // __Print
     m = "macro __Print(__x) {\n"
-        "  print x;\n"
+        "  print __x;\n"
         "}\n";
     res += add_indent(m) + "\n";
 
