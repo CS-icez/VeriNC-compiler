@@ -5,6 +5,7 @@
 #include <format>
 #include <iostream>
 #include <ranges>
+#include <regex>
 #include <stdexcept>
 #include "make_ast.hpp"
 #include "utils.hpp"
@@ -393,10 +394,15 @@ void TLABuilder::addOurFns() {
     string* arg3 = nullptr;
     vector<string*>* args = nullptr;
 
+    auto add_indent = [](const string& s) {
+        const string ident = "      ";
+        return "\n" + ident + std::regex_replace(s, std::regex("\n"), "\n" + ident);
+    };
+
     // `__MinPsnElem(S) == CHOOSE x \in S : \A y \in S : x.psn <= y.psn`
-    strPool.push_back(R"!!(CHOOSE x \in S : \A y \in S : x.psn <= y.psn)!!");
+    strPool.push_back(R"!!(CHOOSE __x \in __S : \A __y \in __S : __x.psn <= __y.psn)!!");
     exp = &strPool.back();
-    strPool.push_back("S");
+    strPool.push_back("__S");
     arg1 = &strPool.back();
     vecStrPool.push_back({arg1});
     args = &vecStrPool.back();
@@ -406,50 +412,49 @@ void TLABuilder::addOurFns() {
     // __Set2Seq(S) ==
     //   LET
     //     RECURSIVE F(_, _)
-    //     F(res_, S_) == IF S_ = {}
-    //       THEN res_
-    //       ELSE LET x == MinSeqElem(S_) IN F(Append(res_, x), S_ \ {x})
+    //     F(res, SS) == IF SS = {}
+    //       THEN res
+    //       ELSE LET x == MinPsnElem(SS) IN F(Append(res, x), S \ {x})
     //   IN F(<<>>, S)
     // ```
-    strPool.push_back(
-        "\n"
-        "      LET\n"
-        "        RECURSIVE F(_, _)\n"
-        "        F(res_, S_) == IF S_ = {}\n"
-        "          THEN res_\n"
-        "          ELSE LET x == MinSeqElem(S_) IN F(Append(res_, x), S_ \\ {x})\n"
-        "      IN F(<<>>, S)"
-    );
+    strPool.push_back(add_indent(
+        "LET\n"
+        "  RECURSIVE F(_, _)\n"
+        "  F(__res, __SS) == IF __SS = {}\n"
+        "    THEN __res\n"
+        "    ELSE LET __x == MinPsnElem(__SS) IN F(Append(__res, __x), __SS \\ {__x})\n"
+        "IN F(<<>>, __S)"
+    ));
     exp = &strPool.back();
-    strPool.push_back("S");
+    strPool.push_back("__S");
     arg1 = &strPool.back();
     vecStrPool.push_back({arg1});
     args = &vecStrPool.back();
     fns.emplace_back("__Set2Seq", args, exp);
 
     // `__OutOfOrderRange(seq) == 1..Len(seq)`
-    strPool.push_back("1..Len(seq)");
+    strPool.push_back("1..Len(__seq)");
     exp = &strPool.back();
-    strPool.push_back("seq");
+    strPool.push_back("__seq");
     arg1 = &strPool.back();
     vecStrPool.push_back({arg1});
     args = &vecStrPool.back();
     fns.emplace_back("__OutOfOrderRange", args, exp);
 
     // `__InsertAtEnd(seq, i, elem) == InsertAt(seq, Len(seq) - i + 1, elem)`
-    strPool.push_back("InsertAt(seq, Len(seq) - i + 1, elem)");
+    strPool.push_back("InsertAt(__seq, Len(__seq) - __i + 1, __elem)");
     exp = &strPool.back();
-    strPool.push_back("seq");
+    strPool.push_back("__seq");
     arg1 = &strPool.back();
-    strPool.push_back("i");
+    strPool.push_back("__i");
     arg2 = &strPool.back();
-    strPool.push_back("elem");
+    strPool.push_back("__elem");
     arg3 = &strPool.back();
     vecStrPool.push_back({arg1, arg2, arg3});
     args = &vecStrPool.back();
     fns.emplace_back("__InsertAtEnd", args, exp);
 
-    // `__Receive(__n) == Head(__net_buf[__n])`
+    // `__Receive(n) == Head(__net_buf[n])`
     strPool.push_back("Head(__net_buf[__n])");
     exp = &strPool.back();
     strPool.push_back("__n");
@@ -458,14 +463,61 @@ void TLABuilder::addOurFns() {
     args = &vecStrPool.back();
     fns.emplace_back("__Receive", args, exp);
 
-    // `__Node(thread) == Head(thread)`
-    strPool.push_back("Head(thread)");
+    // `__Node(__thread) == Head(__thread)`
+    strPool.push_back("Head(__thread)");
     exp = &strPool.back();
-    strPool.push_back("thread");
+    strPool.push_back("__thread");
     arg1 = &strPool.back();
     vecStrPool.push_back({arg1});
     args = &vecStrPool.back();
     fns.emplace_back("__Node", args, exp);
+
+    // `__PosCount(f) == Cardinality({x \in DOMAIN f : f[x] > 0})`
+    strPool.push_back("Cardinality({__x \\in DOMAIN __f : __f[__x] > 0})");
+    exp = &strPool.back();
+    strPool.push_back("__f");
+    arg1 = &strPool.back();
+    vecStrPool.push_back({arg1});
+    args = &vecStrPool.back();
+    fns.emplace_back("__PosCount", args, exp);
+
+    // `__AllPossibleLoss(S) == {s \in SUBSET S : Cardinality(s) <= __max_loss}`
+    strPool.push_back("{__s \\in SUBSET __S : Cardinality(__s) <= __max_loss}");
+    exp = &strPool.back();
+    strPool.push_back("__s");
+    arg1 = &strPool.back();
+    vecStrPool.push_back({arg1});
+    args = &vecStrPool.back();
+    fns.emplace_back("__AllPossibleLoss", args, exp);
+
+    // TODO: construct rather than filter
+    // ```
+    // __AllPossibleOutOfOrder(S) ==
+    //   LET
+    //     max_range == 0..Max({Len(__net_buf[i]) : i \in S}),
+    //     ooo_set == [S -> max_range],
+    //     ooo_set_possible == {i \in ooo_set : 
+    //       /\ (\A j \in DOMAIN i : i[j] \in __OutOfOrderRange(__net_buf[j]) \cup {0})
+    //       /\ __PosCount(i) <= __max_out_of_order
+    //     }
+    //   IN ooo_set_possible
+    // ```
+    strPool.push_back(add_indent(
+        "LET\n"
+        "  __max_range == 0..Max({Len(__net_buf[__i]) : __i \\in __S}),\n"
+        "  __ooo_set == [__S -> __max_range],\n"
+        "  __ooo_set_possible == {__i \\in __ooo_set : \n"
+        "    /\\ (\\A __j \\in DOMAIN __i : __i[__j] \\in __OutOfOrderRange(__net_buf[__j]) \\cup {0})\n"
+        "    /\\ __PosCount(__i) <= __max_out_of_order\n"
+        "  }\n"
+        "IN __ooo_set_possible"
+    ));
+    exp = &strPool.back();
+    strPool.push_back("__S");
+    arg1 = &strPool.back();
+    vecStrPool.push_back({arg1});
+    args = &vecStrPool.back();
+    fns.emplace_back("__AllPossibleOutOfOrder", args, exp);
 }
 
 void TLABuilder::analyze(ProtocolAST* protocol) {
@@ -1161,7 +1213,7 @@ string TLABuilder::buildTLA() {
     string res;
     res += format("---- MODULE {} ----\n\n", module_name);
     res += "EXTENDS Integers, Sequences, FiniteSets, "
-        "TLC, Bitwise, FiniteSetsExt, SequencesExt\n\n";
+        "TLC, Bitwise, FiniteSetsExt, SequencesExt, Functions\n\n";
 
     res += "CONSTANTS\n";
     for (const auto& [name, tla] : configs) {
@@ -1228,7 +1280,7 @@ string TLABuilder::buildTLA() {
 string TLABuilder::buildMacros() {
     const string ident = "  ";
     auto add_indent = [&ident](const std::string& s) {
-        string res = ident;
+        auto res = ident;
         for (auto it = s.begin(); it != s.end(); ++it) {
             res += *it;
             if (*it == '\n' && (it + 1) != s.end()) {
@@ -1241,7 +1293,6 @@ string TLABuilder::buildMacros() {
     string res = "";
     string m = "";
 
-    // TODO: implement
     // __Assert
     m = "macro __Assert(__cond, __msg) {\n"
     "  with (__b = Assert(__cond, __msg)) {\n"
@@ -1310,10 +1361,31 @@ string TLABuilder::buildMacros() {
     res += add_indent(m) + "\n";
 
     // __SendM
+    // TODO: implement
+    res += add_indent(m) + "\n";
 
     // __DropSendM
+    // TODO: implement
+    res += add_indent(m) + "\n";
 
     // __Multicast
+    // TODO: look up routing table. Handle multiple dsts belonging to the same next hop.
+    m = "macro __Multicast(__pkt, __dsts) {\n"
+        "  with (\n"
+        "    __pkts = [__dst \\in __dsts |-> \"dst\" :> __dst @@ __pkt],\n"
+        "    __loss \\in __AllPossibleLoss(__dsts),\n"
+        "    __not_loss_dsts = __dsts \\ __loss,\n"
+        "    __ooo \\in __AllPossibleOutOfOrder(__not_loss_dsts)\n"
+        "  ) {\n"
+        "    __net_buf := [__n \\in NODE_SET |->\n"
+        "      CASE __n \\in __not_loss_dsts -> InsertAtEnd(__net_buf[__n], __ooo[__n], __pkts[__n])\n"
+        "      [] OTHER -> __net_buf[__n]\n"
+        "    ];\n"
+        "    __max_loss := __max_loss - TrueCount(__loss);\n"
+        "    __max_out_of_order := __max_out_of_order - PosCount(__ooo);\n"
+        "  }\n"
+        "}\n";
+    res += add_indent(m) + "\n";
 
     // __DropMulticast
 

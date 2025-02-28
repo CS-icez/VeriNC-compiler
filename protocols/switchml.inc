@@ -35,7 +35,6 @@ protocol {
         seen = $[i \in {0, 1}, j \in AGG_SET, k \in CLIENT_SET |-> FALSE]$;
 
     fn MinElem(S) = $CHOOSE x \in S : \A y \in S : x <= y$;
-    fn TrueCount(f) = $Cardinality({x \in DOMAIN f : f[x]})$;
     fn Flip(b) = $IF b = 1 THEN 0 ELSE 1$;
 
     thread(Client) ClientSend {
