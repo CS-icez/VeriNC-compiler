@@ -13,6 +13,7 @@ using std::format;
 using std::pair;
 using std::string;
 using std::vector;
+using namespace std::string_literals;
 namespace rg = std::ranges;
 
 namespace std {
@@ -314,7 +315,7 @@ void TLABuilder::addOurConstants() {
         // `TYPE_SET = {node1, node2, ...}`
         auto type_set = toUpper(type) + "_SET";
         addNewName(type_set, false);
-        t = string("{") + join(type2nodes[type], ", ") + "}";
+        t = "{"s + join(type2nodes[type], ", ") + "}";
         strPool.push_back(t);
         configs.emplace_back(type_set, &strPool.back());
 
@@ -355,7 +356,7 @@ void TLABuilder::addOurConstants() {
 
 void TLABuilder::addOurVariables() {
     // `__net_buf = [__n \in NODE_SET |-> <<>>]`
-    strPool.push_back(R"([__n \in NODE_SET |-> <<>>])");
+    strPool.push_back(R"!!([__n \in NODE_SET |-> <<>>])!!");
     type2varDecls[all].emplace_back("__net_buf", &strPool.back());
 
     // `__max_loss = MAX_LOSS`
@@ -367,7 +368,7 @@ void TLABuilder::addOurVariables() {
     type2varDecls[all].emplace_back("__max_out_of_order", &strPool.back());
 
     // '__node_terminated = [__n \in NODE_SET |-> FALSE])'
-    strPool.push_back(R"([__n \in NODE_SET |-> FALSE])");
+    strPool.push_back(R"!!([__n \in NODE_SET |-> FALSE])!!");
     type2varDecls[all].emplace_back("__node_terminated", &strPool.back());
 }
 
@@ -379,7 +380,7 @@ void TLABuilder::addOurFns() {
     vector<string*>* args = nullptr;
 
     // `__MinPsnElem(S) == CHOOSE x \in S : \A y \in S : x.psn <= y.psn`
-    strPool.push_back(R"(CHOOSE x \in S : \A y \in S : x.psn <= y.psn)");
+    strPool.push_back(R"!!(CHOOSE x \in S : \A y \in S : x.psn <= y.psn)!!");
     exp = &strPool.back();
     strPool.push_back("S");
     arg1 = &strPool.back();
@@ -549,10 +550,30 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
     label.name = first;
 
     auto check_after_exit = [&path, this]() {
-        this->check(
+        check(
             path.has_exit != true,
             "Statements after exit are unreachable"
         );
+    };
+    auto collect_last_label = [this, &path, &label, &labels]() {
+        check(
+            !label.stmts.empty(),
+            format("No statement follows label {}", label.name)
+        );
+        check(
+            (path.has_recv == true && path.has_sendlike == true)
+                || path.has_recv == false
+                || path.has_sendlike == false,
+            "The following patterns are not allowed. "
+            "This is a limitation of the current implementation. "
+            "(1) `if (cond) { receive(); } send(pkt);` "
+            "(2) receive(); if (cond) { send(); } "
+            "(3) if (cond1) { receive(); } if (cond2) { send(); } "
+            "Try redesigning execution logic or setting a breakpoint."
+        );
+        label.has_recv = path.has_recv;
+        label.has_sendlike = path.has_sendlike;
+        labels.push_back(label);
     };
     
     check(!stmts.empty(), "Thread should not be empty");
@@ -562,24 +583,7 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
         switch (stmt->rule) {
             case StmtAST::Breakpoint:
                 if (label.name != first) {
-                    check(
-                        !label.stmts.empty(),
-                        format("No statement follows label {}", label.name)
-                    );
-                    check(
-                        (path.has_recv == true && path.has_sendlike == true)
-                            || path.has_recv == false
-                            || path.has_sendlike == false,
-                        "The following patterns are not allowed. "
-                        "This is a limitation of the current implementation. "
-                        "(1) `if (cond) { receive(); } send(pkt);` "
-                        "(2) receive(); if (cond) { send(); } "
-                        "(3) if (cond1) { receive(); } if (cond2) { send(); } "
-                        "Try redesigning execution logic or setting a breakpoint."
-                    );
-                    label.has_recv = path.has_recv;
-                    label.has_sendlike = path.has_sendlike;
-                    labels.push_back(label);
+                    collect_last_label();
                 }
                 label = LabelMeta();
                 label.name = *stmt->name;
@@ -635,6 +639,7 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
         }
     }
 
+    collect_last_label();
     return labels;
 }
 
@@ -711,12 +716,33 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
     label.name = first;
     
     auto check_after_exit = [&path, this]() {
-        this->check(
+        check(
             path.has_exit != true,
             "Statements after exit are unreachable"
         );
     };
     assert(path.has_exit == false && "Internal error: exit before branch");
+    auto collect_last_label = [this, &path, &label, &labels, has_temp]() {
+        check(
+            !label.stmts.empty(),
+            format("No statement follows label {}", label.name)
+        );
+        // TODO: correct?
+        check(
+            (path.has_recv == true && path.has_sendlike == true)
+                || path.has_recv == false
+                || path.has_sendlike == false,
+            "The following patterns are not allowed. "
+            "This is a limitation of the current implementation. "
+            "(1) `if (cond) { receive(); } send(pkt);` "
+            "(2) receive(); if (cond) { send(); } "
+            "(3) if (cond1) { receive(); } if (cond2) { send(); } "
+            "Try redesigning execution logic or setting a breakpoint."
+        );
+        label.has_recv = path.has_recv;
+        label.has_sendlike = path.has_sendlike;
+        labels.push_back(label);
+    };
     
     if (stmts.empty()) {
         stmts.push_back(make_ast<StmtAST>(StmtAST::Null, n8));
@@ -741,25 +767,7 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
                         "After declaring temporary values, "
                         "breakpoints are not allowed in following branches"
                     );
-                    check(
-                        !label.stmts.empty(),
-                        format("No statement follows label {}", label.name)
-                    );
-                    // TODO: correct?
-                    check(
-                        (path.has_recv == true && path.has_sendlike == true)
-                            || path.has_recv == false
-                            || path.has_sendlike == false,
-                        "The following patterns are not allowed. "
-                        "This is a limitation of the current implementation. "
-                        "(1) `if (cond) { receive(); } send(pkt);` "
-                        "(2) receive(); if (cond) { send(); } "
-                        "(3) if (cond1) { receive(); } if (cond2) { send(); } "
-                        "Try redesigning execution logic or setting a breakpoint."
-                    );
-                    label.has_recv = path.has_recv;
-                    label.has_sendlike = path.has_sendlike;
-                    labels.push_back(label);
+                    collect_last_label();
                     path.branch_has_label = true;
                 }
                 label = LabelMeta();
@@ -823,6 +831,7 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
         }
     }
 
+    collect_last_label();
     return {path, labels};
 }
 
@@ -1110,7 +1119,11 @@ string TLABuilder::exp2str(const ExpAST& exp) {
         case ExpAST::TLA:
             return *exp.tla;
         case ExpAST::PrimCall:
-            return *exp.fn_name;
+            return format(
+                "{}({})",
+                *exp.fn_name,
+                join(exps2strs(*exp.args), ", ")
+            );
         default:
             assert(false && "Internal error: unknown expression type");
     }
@@ -1120,7 +1133,7 @@ vector<string> TLABuilder::exps2strs(const vector<ExpAST*>& exps) {
     vector<string> res;
     res.reserve(exps.size());
     rg::transform(exps, std::back_inserter(res),
-        [this](const ExpAST* exp) { return this->exp2str(*exp); });
+        [this](const ExpAST* exp) { return exp2str(*exp); });
     return res;
 }
 
@@ -1135,7 +1148,6 @@ string TLABuilder::buildTLA() {
         res += format("  {},\n", name);
     }
     res[res.length() - 2] = '\n';
-    res += "\n";
 
     res += "(* --fair algorithm main {\n";
 
@@ -1174,10 +1186,11 @@ string TLABuilder::buildTLA() {
     res += "  }\n\n\n";
 
     res += buildMacros();
-    res += "\n\n";
+    res += "\n";
 
     for (const auto& [type, threads] : type2threads) {
         for (const auto& [name, labels] : threads) {
+            res += "\n";
             res += buildProcess(type, name, labels);
         }
     }
@@ -1249,13 +1262,141 @@ string TLABuilder::buildMacros() {
         "}\n";
     res += add_indent(m) + "\n";
 
+    res.pop_back();
     return res;
 }
 
 string TLABuilder::buildProcess(const string& type, const string& name,
-    const vector<LabelMeta>& stmts) {
-    // TODO: implement
-    return null;
+    const vector<LabelMeta>& label_metas) {
+    string res;
+    res += format(
+        R"!!(  fair+ process ({} \in ({} \X {{"{}"}})) {{)!!" "\n",
+        name, toUpper(type) + "_SET", name
+    );
+    auto end_label = format("__L_{}_End", name);
+    res += buildLabels(label_metas, 4, end_label);
+    res += format("  {}:\n", end_label);
+    res += "    skip;\n";
+    res += "  }\n";
+    return res;
+}
+
+string TLABuilder::buildLabels(const vector<LabelMeta>& label_metas, int indent,
+    const string& end_label) {
+    string res;
+    for (const auto& label_meta : label_metas) {
+        res += buildLabel(label_meta, indent, end_label);
+    }
+    return res;
+}
+
+string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
+    const string& end_label) {
+    assert(indent >= 4 && "Internal error: invalid indentation number");
+
+    auto spaces = string(indent, ' ');
+    auto branch_it = label_meta.branches.begin();
+    auto branch_end = label_meta.branches.end();
+    string res = "";
+
+    if (label_meta.name != fake_label) {
+        res += format("{}{}:\n", string(indent - 2, ' '), label_meta.name);
+        res += format(
+            "{}if (__node_terminated[__Node(self)]) {{ goto {}; }}\n",
+            spaces, end_label
+        );
+    }
+
+    if (!label_meta.temps.empty()) {
+        res += format("{}with (\n", spaces);
+        for (const auto& [name, exp] : label_meta.temps) {
+            res += format("{}  {} = {},\n", spaces, name, exp2str(*exp));
+        }
+        res += spaces + ") {\n";
+        indent += 2;
+        spaces = string(indent, ' ');
+    }
+
+    for (const auto& stmt : label_meta.stmts) {
+        switch (stmt->rule) {
+            case StmtAST::Breakpoint:
+                assert(*stmt->name == label_meta.name && "Internal error: label name mismatch");
+                break;
+            case StmtAST::Assign: {
+                vector<string> assigns;
+                bool has_recv = false;
+                for (const auto& assign : *stmt->assigns) {
+                    auto lhs = *assign->ident;
+                    if (assign->keys != nullptr) {
+                        lhs += format("[{}]", join(exps2strs(*assign->keys), ", "));
+                    }
+                    auto rhs = exp2str(*assign->exp);
+                    assigns.push_back(format("{} := {}", lhs, rhs));
+                    auto exp = assign->exp;
+                    if (exp->rule == ExpAST::PrimCall && *exp->fn_name == "__Receive") {
+                        has_recv = true;
+                    }
+                }
+                res += spaces + join(assigns, " || ") + ";\n";
+                if (label_meta.has_sendlike == false && has_recv) {
+                    res += format("{}__Drop();\n", spaces);
+                }
+                break;
+            }
+            case StmtAST::Null:
+                res += format("{}skip;\n", spaces);
+                break;
+            case StmtAST::PrimCall: {
+                auto name = *stmt->name;
+                auto args = exps2strs(*stmt->exps);
+                res += format("{}{}({});\n", spaces, name, join(args, ", "));
+                if (label_meta.has_sendlike == false && name == "__Receive") {
+                    res += format("{}__Drop();\n", spaces);
+                }
+                break;
+            }
+            case StmtAST::Temp:
+                break;
+            case StmtAST::If:
+                res += format("{}if({}) {{\n", spaces, exp2str(*stmt->exp));
+                res += buildLabels(*branch_it++, indent + 2, end_label);
+                res += format("{}}}\n", spaces);
+                if (stmt->vec_elif_exp != nullptr) {
+                    for (size_t i = 0; i < stmt->vec_elif_exp->size(); ++i) {
+                        auto elif_exp = (*stmt->vec_elif_exp)[i];
+                        res += format("{}else if({}) {{\n", spaces, exp2str(*elif_exp));
+                        res += buildLabels(*branch_it++, indent + 2, end_label);
+                        res += format("{}}}\n", spaces);
+                    }
+                }
+                if (stmt->else_stmts != nullptr) {
+                    res += format("{}else {{\n", spaces);
+                    res += buildLabels(*branch_it++, indent + 2, end_label);
+                    res += format("{}}}\n", spaces);
+                }
+                break;
+            case StmtAST::While:
+                res += format("{}while({}) {{\n", spaces, exp2str(*stmt->exp));
+                res += buildLabels(*branch_it++, indent + 2, end_label);
+                res += format("{}}}\n", spaces);
+                break;
+            case StmtAST::Break:
+                [[fallthrough]];
+            case StmtAST::Continue:
+                assert(false && "Internal error: break and continue statements not supported");
+                break;
+            default:
+                assert(false && "Internal error: unknown statement type");
+        }
+    }
+
+    assert(branch_it == branch_end && "Internal error: branch iterator not at end");
+
+    if (!label_meta.temps.empty()) {
+        res += string(indent - 2, ' ') + "}\n";
+    }
+
+    return res;
 }
 
 string TLABuilder::buildCFG() {

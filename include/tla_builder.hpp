@@ -218,7 +218,11 @@ private:
 
     string buildMacros();
     string buildProcess(const string& type, const string& name,
-        const vector<LabelMeta>& stmts);
+        const vector<LabelMeta>& label_metas);
+    string buildLabels(const vector<LabelMeta>& label_metas, int indent,
+        const string& end_label);
+    string buildLabel(const LabelMeta& label_meta, int indent,
+        const string& end_label);
 
     string toUpper(const string& str);
 
