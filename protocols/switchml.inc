@@ -25,7 +25,7 @@ protocol {
         idx |-> i % AGG_SIZE,
         val |-> 1,
         psn |-> i,
-        dst |-> SW
+        dst |-> sw
     ]]$;
     var(Client) pending = $null$;
 
@@ -37,6 +37,8 @@ protocol {
     fn MinElem(S) = $CHOOSE x \in S : \A y \in S : x <= y$;
     fn Flip(b) = $IF b = 1 THEN 0 ELSE 1$;
 
+    // Test comment.
+
     thread(Client) ClientSend {
     L_ClientSend:
       unicast($[i \in AGG_SET |-> requests[i]]$);
@@ -45,8 +47,8 @@ protocol {
 
     thread(Client) ClientRecv {
     L_ClientRecv:
-        wait($pending # null$);
         while ($TRUE$) {
+            wait($pending # null$);
             temp pkt = receive();
             assert($pkt.val = res[pkt.psn]$, $"ClientAck: incorrect value"$);
             if ($pkt.psn + AGG_SIZE < REQ_NUM$) {
@@ -64,11 +66,11 @@ protocol {
 
     thread(Client) ClientRetx {
     L_ClientRetx:
-        wait($pending # null$);
         while ($TRUE$) {
+            wait($pending # null$);
             wait($pending # {}$);
             temp i = $MinElem(pending)$;
-            wait($requests[i] \notin Seq2Set(__net_buf[SW])$);
+            wait($requests[i] \notin ToSet(__net_buf[sw])$);
             send($requests[i]$);
         }
     }

@@ -314,13 +314,18 @@ void TLABuilder::addOurConstants() {
 
     string t = null;
 
+    // `node = node`
+    for (auto& node : nodes_in_order) {
+        configs.emplace_back(node, &node);
+    }
+
     for (const auto& type : nodetypes) {
         // `TYPE_SET = {node1, node2, ...}`
         auto type_set = toUpper(type) + "_SET";
         addNewName(type_set, false);
         t = "{"s + join(type2nodes[type], ", ") + "}";
         strPool.push_back(t);
-        configs.emplace_back(type_set, &strPool.back());
+        type2constDecls[all].emplace_back(type_set, &strPool.back());
 
         // `TYPE_NUM = Cardinality(TYPE_SET)`
         auto type_num = toUpper(type) + "_NUM";
@@ -422,7 +427,7 @@ void TLABuilder::addOurFns() {
     //     RECURSIVE F(_, _)
     //     F(res, SS) == IF SS = {}
     //       THEN res
-    //       ELSE LET x == MinPsnElem(SS) IN F(Append(res, x), S \ {x})
+    //       ELSE LET x == __MinPsnElem(SS) IN F(Append(res, x), S \ {x})
     //   IN F(<<>>, S)
     // ```
     strPool.push_back(add_indent(
@@ -430,7 +435,7 @@ void TLABuilder::addOurFns() {
         "  RECURSIVE F(_, _)\n"
         "  F(__res, __SS) == IF __SS = {}\n"
         "    THEN __res\n"
-        "    ELSE LET __x == MinPsnElem(__SS) IN F(Append(__res, __x), __SS \\ {__x})\n"
+        "    ELSE LET __x == __MinPsnElem(__SS) IN F(Append(__res, __x), __SS \\ {__x})\n"
         "IN F(<<>>, __S)"
     ));
     exp = &strPool.back();
@@ -492,7 +497,7 @@ void TLABuilder::addOurFns() {
     // `__AllPossibleLoss(S) == {s \in SUBSET S : Cardinality(s) <= __max_loss}`
     strPool.push_back("{__s \\in SUBSET __S : Cardinality(__s) <= __max_loss}");
     exp = &strPool.back();
-    strPool.push_back("__s");
+    strPool.push_back("__S");
     arg1 = &strPool.back();
     vecStrPool.push_back({arg1});
     args = &vecStrPool.back();
@@ -604,6 +609,8 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
         exp->rule == ExpAST::TLA,
         format("RHS of {} declaration {} should not involve primitive calls", cv, name)
     );
+    // Replace `self` with `__n`.
+    *exp->tla = std::regex_replace(*exp->tla, std::regex("self"), "__n");
 
     if (is_const) {
         type2constDecls[type].emplace_back(name, exp->tla);
@@ -712,6 +719,10 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
                 break;
             case StmtAST::While:
                 check_after_exit();
+                check(
+                    it != stmts.begin() && (*(it - 1))->rule == StmtAST::Breakpoint,
+                    "`while` statement must be preceded immediately by a breakpoint"
+                );
                 path = analyzeWhileStmt(type, *stmt, path, label);
                 label.stmts.push_back(stmt);
                 break;
@@ -811,7 +822,7 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
         );
     };
     assert(path.has_exit == false && "Internal error: exit before branch");
-    auto collect_last_label = [this, &path, &label, &labels, has_temp]() {
+    auto collect_last_label = [this, &path, &label, &labels]() {
         check(
             !label.stmts.empty(),
             format("No statement follows label {}", label.name)
@@ -898,11 +909,15 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
                 break;
             case StmtAST::While:
                 check_after_exit();
+                // check(
+                //     !has_temp,
+                //     "While loops are not allowed after declaring temporary values. "
+                //     "Try setting a breakpoint before the while loop, "
+                //     "or declaring temporary values inside the while loop."
+                // );
                 check(
-                    !has_temp,
-                    "While loops are not allowed after declaring temporary values. "
-                    "Try setting a breakpoint before the while loop, "
-                    "or declaring temporary values inside the while loop."
+                    it != stmts.begin() && (*(it - 1))->rule == StmtAST::Breakpoint,
+                    "`while` statement must be preceded immediately by a breakpoint"
                 );
                 path = analyzeWhileStmt(type, *stmt, path, label);
                 label.stmts.push_back(stmt);
@@ -1291,6 +1306,8 @@ string TLABuilder::buildTLA() {
         res += format("{} == {}\n", name, *tla);
     }
 
+    res += "\n====\n";
+
     return res;
 }
 
@@ -1337,7 +1354,7 @@ string TLABuilder::buildMacros() {
         "      await __max_out_of_order > 0;\n"
         "      await __OutOfOrderRange(__net_buf[__h]) # {};\n"
         "      with (__pos \\in __OutOfOrderRange(__net_buf[__h])) {\n"
-        "        __net_buf[__h] := __InsertAtEnd(@, __pos, pkt);\n"
+        "        __net_buf[__h] := __InsertAtEnd(@, __pos, __pkt);\n"
         "      };\n"
         "      __max_out_of_order := __max_out_of_order - 1;\n"
         "    }\n"
@@ -1361,7 +1378,7 @@ string TLABuilder::buildMacros() {
         "      await __OutOfOrderRange(__net_buf[__h]) # {};\n"
         "      with (__pos \\in __OutOfOrderRange(__net_buf[__h])) {\n"
         "        if (__s = __h) {\n"
-        "          __net_buf[__h] := Tail(__InsertAtEnd(@, __pos, pkt));\n"
+        "          __net_buf[__h] := Tail(__InsertAtEnd(@, __pos, __pkt));\n"
         "        } else {\n"
         "          __net_buf[__h] := __InsertAtEnd(@, __pos, pkt) ||\n"
         "          __net_buf[__s] := Tail(@);\n"
@@ -1472,11 +1489,11 @@ string TLABuilder::buildMacros() {
         "    __ooo \\in __AllPossibleOutOfOrder(__unlost_dsts)\n"
         "  ) {\n"
         "    __net_buf := [__n \\in NODE_SET |->\n"
-        "      CASE __n \\in __unlost_dsts -> InsertAtEnd(__net_buf[__n], __ooo[__n], __pkts[__n])\n"
+        "      CASE __n \\in __unlost_dsts -> __InsertAtEnd(__net_buf[__n], __ooo[__n], __pkts[__n])\n"
         "      [] OTHER -> __net_buf[__n]\n"
         "    ];\n"
         "    __max_loss := __max_loss - Cardinality(__loss);\n"
-        "    __max_out_of_order := __max_out_of_order - PosCount(__ooo);\n"
+        "    __max_out_of_order := __max_out_of_order - __PosCount(__ooo);\n"
         "  }\n"
         "}\n";
     res += add_indent(m) + "\n";
@@ -1493,12 +1510,12 @@ string TLABuilder::buildMacros() {
         "    __ooo \\in __AllPossibleOutOfOrder(__unlost_dsts)\n"
         "  ) {\n"
         "    __net_buf := [__n \\in NODE_SET |->\n"
-        "      CASE __n \\in __unlost_dsts -> InsertAtEnd(__net_buf[__n], __ooo[__n], __pkts[__n])\n"
+        "      CASE __n \\in __unlost_dsts -> __InsertAtEnd(__net_buf[__n], __ooo[__n], __pkts[__n])\n"
         "      [] __n = __Node(self) -> Tail(__net_buf[__n])\n"
         "      [] OTHER -> __net_buf[__n]\n"
         "    ];\n"
         "    __max_loss := __max_loss - Cardinality(__loss);\n"
-        "    __max_out_of_order := __max_out_of_order - PosCount(__ooo);\n"
+        "    __max_out_of_order := __max_out_of_order - __PosCount(__ooo);\n"
         "  }\n"
         "}\n";
     res += add_indent(m) + "\n";
@@ -1560,10 +1577,16 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
 
     if (label_meta.name != fake_label) {
         res += format("{}{}:\n", string(indent - 2, ' '), label_meta.name);
+    }
+
+    if (label_meta.name != fake_label && label_meta.stmts.front()->rule != StmtAST::While) {
         res += format(
             "{}if (__node_terminated[__Node(self)]) {{ goto {}; }};\n",
             spaces, end_label
         );
+        res += format("{}else {{\n", spaces);
+        indent += 2;
+        spaces = string(indent, ' ');
     }
 
     if (!label_meta.temps.empty()) {
@@ -1636,7 +1659,13 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
                 break;
             case StmtAST::While:
                 res += format("{}while({}) {{\n", spaces, exp2str(*stmt->exp));
-                res += buildLabels(*branch_it++, indent + 2, end_label);
+                res += format(
+                    "{}  if (__node_terminated[__Node(self)]) {{ goto {}; }};\n",
+                    spaces, end_label
+                );
+                res += format("{}  else {{\n", spaces);
+                res += buildLabels(*branch_it++, indent + 4, end_label);
+                res += format("{}  }};\n", spaces);
                 res += format("{}}};\n", spaces);
                 break;
             case StmtAST::Break:
@@ -1652,7 +1681,15 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
     assert(branch_it == branch_end && "Internal error: branch iterator not at end");
 
     if (!label_meta.temps.empty()) {
-        res += string(indent - 2, ' ') + "}\n";
+        indent -= 2;
+        spaces = string(indent, ' ');
+        res += spaces + "}\n";
+    }
+
+    if (label_meta.name != fake_label && label_meta.stmts.front()->rule != StmtAST::While) {
+        indent -= 2;
+        spaces = string(indent, ' ');
+        res += spaces + "};\n";
     }
 
     return res;
