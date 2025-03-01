@@ -40,7 +40,7 @@ Stmt ::= Breakpoint ":"
        | "while" "(" Exp ")" "{" Stmt* "}"
 Breakpoint ::= IDENT
 PrimCall ::= Primitive "(" Comma<Exp>? ")"
-Primitive ::= "send" | "send_m" | "multicast" | "receive"
+Primitive ::= "send" | "unicast" | "multicast" | "receive"
             | "wait" | "exit" | "assert" | "print" | ...
 Exp ::= "forall" IDENT "in" Exp ":" Exp
       | "exists" IDENT "in" Exp ":" Exp

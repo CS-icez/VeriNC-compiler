@@ -50,7 +50,7 @@ private:
         "nodetype", "node", "link", "route",
         "var", "const", "fn", "thread",
         "temp", "if", "elif", "else", "while", "break", "continue",
-        "send", "send_m", "multicast", "receive",
+        "send", "unicast", "multicast", "receive",
         "wait", "exit", "assert", "print",
         "forall", "exists", "in", "let",
         "self"

@@ -356,14 +356,22 @@ void TLABuilder::addOurConstants() {
         configs.emplace_back(max_out_of_order, &strPool.back());
     }
 
+    // `__links = src1 :> {dst1, ...} @@ ...`
+    vector<string> link_entries;
+    for (const auto& src : nodes_in_order) {
+        link_entries.push_back(format("{} :> {{{}}}", src, join(links[src], ", ")));
+    }
+    strPool.push_back(join(link_entries, " @@ "));
+    type2constDecls[all].emplace_back("__links", &strPool.back());
+
     // `__next_hop = <<src1, dst1>> :> next1 @@ ...`
-    vector<string> entries;
+    vector<string> route_entries;
     for (const auto& src : nodes_in_order) {
         for (const auto& dst : nodes_in_order) {
-            entries.push_back(format("<<{}, {}>> :> {}", src, dst, nexts[src][dst]));
+            route_entries.push_back(format("<<{}, {}>> :> {}", src, dst, nexts[src][dst]));
         }
     }
-    strPool.push_back(join(entries, " @@ "));
+    strPool.push_back(join(route_entries, " @@ "));
     type2constDecls[all].emplace_back("__next_hop", &strPool.back());
 
     // TODO: symmetry.
@@ -409,7 +417,7 @@ void TLABuilder::addOurFns() {
     fns.emplace_back("__MinPsnElem", args, exp);
 
     // ```
-    // __Set2Seq(S) ==
+    // __Set2OrderedSeq(S) ==
     //   LET
     //     RECURSIVE F(_, _)
     //     F(res, SS) == IF SS = {}
@@ -430,7 +438,7 @@ void TLABuilder::addOurFns() {
     arg1 = &strPool.back();
     vecStrPool.push_back({arg1});
     args = &vecStrPool.back();
-    fns.emplace_back("__Set2Seq", args, exp);
+    fns.emplace_back("__Set2OrderedSeq", args, exp);
 
     // `__OutOfOrderRange(seq) == 1..Len(seq)`
     strPool.push_back("1..Len(__seq)");
@@ -494,8 +502,8 @@ void TLABuilder::addOurFns() {
     // ```
     // __AllPossibleOutOfOrder(S) ==
     //   LET
-    //     max_range == 0..Max({Len(__net_buf[i]) : i \in S}),
-    //     ooo_set == [S -> max_range],
+    //     max_range == 0..Max({Len(__net_buf[i]) : i \in S})
+    //     ooo_set == [S -> max_range]
     //     ooo_set_possible == {i \in ooo_set : 
     //       /\ (\A j \in DOMAIN i : i[j] \in __OutOfOrderRange(__net_buf[j]) \cup {0})
     //       /\ __PosCount(i) <= __max_out_of_order
@@ -504,8 +512,8 @@ void TLABuilder::addOurFns() {
     // ```
     strPool.push_back(add_indent(
         "LET\n"
-        "  __max_range == 0..Max({Len(__net_buf[__i]) : __i \\in __S}),\n"
-        "  __ooo_set == [__S -> __max_range],\n"
+        "  __max_range == 0..Max({Len(__net_buf[__i]) : __i \\in __S})\n"
+        "  __ooo_set == [__S -> __max_range]\n"
         "  __ooo_set_possible == {__i \\in __ooo_set : \n"
         "    /\\ (\\A __j \\in DOMAIN __i : __i[__j] \\in __OutOfOrderRange(__net_buf[__j]) \\cup {0})\n"
         "    /\\ __PosCount(__i) <= __max_out_of_order\n"
@@ -518,6 +526,15 @@ void TLABuilder::addOurFns() {
     vecStrPool.push_back({arg1});
     args = &vecStrPool.back();
     fns.emplace_back("__AllPossibleOutOfOrder", args, exp);
+
+    // `__AllPossibleSeq(S) == {seq \in [1..Cardinality(S) -> S] : IsInjective(seq)}`
+    strPool.push_back("{__seq \\in [1..Cardinality(__S) -> __S] : IsInjective(__seq)}");
+    exp = &strPool.back();
+    strPool.push_back("__S");
+    arg1 = &strPool.back();
+    vecStrPool.push_back({arg1});
+    args = &vecStrPool.back();
+    fns.emplace_back("__AllPossibleSeq", args, exp);
 }
 
 void TLABuilder::analyze(ProtocolAST* protocol) {
@@ -944,7 +961,7 @@ void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assig
 
 void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
     vector<ExpAST*>& args, PathMeta& path) {
-    if (name == "send" || name == "send_m" || name == "multicast") {
+    if (name == "send" || name == "unicast" || name == "multicast") {
         path.has_effect = true;
         check(
             path.has_sendlike == false,
@@ -966,13 +983,13 @@ void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
                 "i.e. the packet to be sent"
             );
             name = path.has_recv == true ? "__DropSend" : "__Send";
-        } else if (name == "send_m") {
+        } else if (name == "unicast") {
             check(
                 args.size() == 1,
-                "`send_m` should have exactly one argument, "
+                "`unicast` should have exactly one argument, "
                 "i.e. a dictionary mapping arbitrary keys to packets"
             );
-            name = path.has_recv == true ? "__DropSendM" : "__SendM";
+            name = path.has_recv == true ? "__DropUnicast" : "__Unicast";
         } else if (name == "multicast") {
             check(
                 args.size() == 2,
@@ -1293,6 +1310,9 @@ string TLABuilder::buildMacros() {
     string res = "";
     string m = "";
 
+    // TODO: supporting more transmission primitives: an unsafe but general sending, 
+    // TODO: a reliable sending.
+
     // __Assert
     m = "macro __Assert(__cond, __msg) {\n"
     "  with (__b = Assert(__cond, __msg)) {\n"
@@ -1308,9 +1328,11 @@ string TLABuilder::buildMacros() {
         "}\n";
     res += add_indent(m) + "\n";
 
+    // TODO: a unified way to implement these sending primitives?
+
     // __Send
     m = "macro __Send(__pkt) {\n"
-        "  with (__h = __next_hop[__Node(self), __pkt.dst]) {"
+        "  with (__h = __next_hop[__Node(self), __pkt.dst]) {\n"
         "    either {\n"
         "      await __max_out_of_order > 0;\n"
         "      await __OutOfOrderRange(__net_buf[__h]) # {};\n"
@@ -1318,10 +1340,12 @@ string TLABuilder::buildMacros() {
         "        __net_buf[__h] := __InsertAtEnd(@, __pos, pkt);\n"
         "      };\n"
         "      __max_out_of_order := __max_out_of_order - 1;\n"
-        "    } or {\n"
+        "    }\n"
+        "    or {\n"
         "      await __max_loss > 0;\n"
         "      __max_loss := __max_loss - 1;\n"
-        "    } or {\n"
+        "    }\n"
+        "    or {\n"
         "      __net_buf[__h] := Append(@, __pkt);\n"
         "    }\n"
         "  }\n"
@@ -1331,7 +1355,7 @@ string TLABuilder::buildMacros() {
     // __DropSend
     m = "macro __DropSend(__pkt) {\n"
         "  __Assert(__net_buf[__Node(self)] # {}, \"DropSend: empty buffer\");\n"
-        "  with (__s = __Node(self), __h = __next_hop[__s, __pkt.dst]) {"
+        "  with (__s = __Node(self), __h = __next_hop[__s, __pkt.dst]) {\n"
         "    either {\n"
         "      await __max_out_of_order > 0;\n"
         "      await __OutOfOrderRange(__net_buf[__h]) # {};\n"
@@ -1344,11 +1368,13 @@ string TLABuilder::buildMacros() {
         "        }\n"
         "      };\n"
         "      __max_out_of_order := __max_out_of_order - 1;\n"
-        "    } or {\n"
+        "    }\n"
+        "    or {\n"
         "      await __max_loss > 0;\n"
         "      __max_loss := __max_loss - 1;\n"
         "      __net_buf[__s] := Tail(@);\n"
-        "    } or {\n"
+        "    }\n"
+        "    or {\n"
         "      if (__s = __h) {\n"
         "        __net_buf[__h] := Tail(Append(@, __pkt));\n"
         "      } else {\n"
@@ -1360,34 +1386,122 @@ string TLABuilder::buildMacros() {
         "}\n";
     res += add_indent(m) + "\n";
 
-    // __SendM
-    // TODO: implement
+    // TODO: allowing arbitrary out-of-order?
+    // __Unicast
+    m = "macro __Unicast(__pkts) {\n"
+        "  with (\n"
+        "    __keys = DOMAIN __pkts,\n"
+        "    __dst = __pkts[CHOOSE __i \\in __keys : TRUE].dst,\n"
+        "    __h = __next_hop[__Node(self), __dst],\n"
+        "    __loss \\in __AllPossibleLoss(__keys),\n"
+        "    __unlost_pkts = {__pkts[__i] : __i \\in __keys \\ __loss},\n"
+        "    __ordered = __Set2OrderedSeq(__unlost_pkts)\n"
+        "  ) {\n"
+        "    __Assert(Cardinality(__keys) > 0, \"Unicast: empty packets\");\n"
+        "    __Assert(\n"
+        "      \\A __i \\in __keys : __pkts[__i].dst = __dst,\n"
+        "      \"Unicast: different destinations\"\n"
+        "    );\n"
+        "    __max_loss := __max_loss - Cardinality(__loss);\n"
+        "    either {\n"
+        "      await __max_out_of_order > 0;\n"
+        "      await Cardinality(__unlost_pkts) >= 2;\n"
+        "      with (__ooo \\in __AllPossibleSeq(__unlost_pkts) \\ {__ordered}) {\n"
+        "        __max_out_of_order := __max_out_of_order - 1;\n"
+        "        __net_buf[__h] := Append(@, __ooo);\n"
+        "      }\n"
+        "    }\n"
+        "    or {\n"
+        "      __net_buf[__h] := Append(@, __ordered);\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
     res += add_indent(m) + "\n";
 
-    // __DropSendM
-    // TODO: implement
+    // __DropUnicast
+    m = "macro __DropUnicast(__pkts) {\n"
+        "  with (\n"
+        "    __keys = DOMAIN __pkts,\n"
+        "    __dst = __pkts[CHOOSE __i \\in __keys : TRUE].dst,\n"
+        "    __s = __Node(self),\n"
+        "    __h = __next_hop[__s, __dst],\n"
+        "    __loss \\in __AllPossibleLoss(__keys),\n"
+        "    __unlost_pkts = {__pkts[__i] : __i \\in __keys \\ __loss},\n"
+        "    __ordered = __Set2OrderedSeq(__unlost_pkts)\n"
+        "  ) {\n"
+        "    __Assert(Cardinality(__keys) > 0, \"DropUnicast: empty packets\");\n"
+        "    __Assert(\n"
+        "      \\A __i \\in __keys : __pkts[__i].dst = __dst,\n"
+        "      \"DropUnicast: different destinations\"\n"
+        "    );\n"
+        "    __max_loss := __max_loss - Cardinality(__loss);\n"
+        "    either {\n"
+        "      await __max_out_of_order > 0;\n"
+        "      await Cardinality(__unlost_pkts) >= 2;\n"
+        "      with (__ooo \\in __AllPossibleSeq(__unlost_pkts) \\ {__ordered}) {\n"
+        "        __max_out_of_order := __max_out_of_order - 1;\n"
+        "        if (__s = __h) {\n"
+        "          __net_buf[__h] := Tail(Append(@, __ooo));\n"
+        "        } else {\n"
+        "          __net_buf[__h] := Append(@, __ooo) ||\n"
+        "          __net_buf[__s] := Tail(@);\n"
+        "        }\n"
+        "      }\n"
+        "    }\n"
+        "    or {\n"
+        "      if (__s = __h) {\n"
+        "        __net_buf[__h] := Tail(Append(@, __ordered));\n"
+        "      } else {\n"
+        "        __net_buf[__h] := Append(@, __ordered) ||\n"
+        "        __net_buf[__s] := Tail(@);\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
     res += add_indent(m) + "\n";
 
+    // TODO: allowing arbitrary destinations?
     // __Multicast
-    // TODO: look up routing table. Handle multiple dsts belonging to the same next hop.
     m = "macro __Multicast(__pkt, __dsts) {\n"
+        "  __Assert(__dsts \\subseteq __links[__Node(self)], \"Multicast: invalid destinations\");\n"
+        "  __Assert(__Node(self) \\notin __dsts, \"DropMulticast: self in destinations\");\n"
         "  with (\n"
         "    __pkts = [__dst \\in __dsts |-> \"dst\" :> __dst @@ __pkt],\n"
         "    __loss \\in __AllPossibleLoss(__dsts),\n"
-        "    __not_loss_dsts = __dsts \\ __loss,\n"
-        "    __ooo \\in __AllPossibleOutOfOrder(__not_loss_dsts)\n"
+        "    __unlost_dsts = __dsts \\ __loss,\n"
+        "    __ooo \\in __AllPossibleOutOfOrder(__unlost_dsts)\n"
         "  ) {\n"
         "    __net_buf := [__n \\in NODE_SET |->\n"
-        "      CASE __n \\in __not_loss_dsts -> InsertAtEnd(__net_buf[__n], __ooo[__n], __pkts[__n])\n"
+        "      CASE __n \\in __unlost_dsts -> InsertAtEnd(__net_buf[__n], __ooo[__n], __pkts[__n])\n"
         "      [] OTHER -> __net_buf[__n]\n"
         "    ];\n"
-        "    __max_loss := __max_loss - TrueCount(__loss);\n"
+        "    __max_loss := __max_loss - Cardinality(__loss);\n"
         "    __max_out_of_order := __max_out_of_order - PosCount(__ooo);\n"
         "  }\n"
         "}\n";
     res += add_indent(m) + "\n";
 
     // __DropMulticast
+    m = "macro __DropMulticast(__pkt, __dsts) {\n"
+        "  __Assert(__net_buf[__Node(self)] # {}, \"DropMulticast: empty buffer\");\n"
+        "  __Assert(__dsts \\subseteq __links[__Node(self)], \"DropMulticast: invalid destinations\");\n"
+        "  __Assert(__Node(self) \\notin __dsts, \"DropMulticast: self in destinations\");\n"
+        "  with (\n"
+        "    __pkts = [__dst \\in __dsts |-> \"dst\" :> __dst @@ __pkt],\n"
+        "    __loss \\in __AllPossibleLoss(__dsts),\n"
+        "    __unlost_dsts = __dsts \\ __loss,\n"
+        "    __ooo \\in __AllPossibleOutOfOrder(__unlost_dsts)\n"
+        "  ) {\n"
+        "    __net_buf := [__n \\in NODE_SET |->\n"
+        "      CASE __n \\in __unlost_dsts -> InsertAtEnd(__net_buf[__n], __ooo[__n], __pkts[__n])\n"
+        "      [] __n = __Node(self) -> Tail(__net_buf[__n])\n"
+        "      [] OTHER -> __net_buf[__n]\n"
+        "    ];\n"
+        "    __max_loss := __max_loss - Cardinality(__loss);\n"
+        "    __max_out_of_order := __max_out_of_order - PosCount(__ooo);\n"
+        "  }\n"
+        "}\n";
+    res += add_indent(m) + "\n";
 
     // __Wait
     m = "macro __Wait(__cond) {\n"
@@ -1447,7 +1561,7 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
     if (label_meta.name != fake_label) {
         res += format("{}{}:\n", string(indent - 2, ' '), label_meta.name);
         res += format(
-            "{}if (__node_terminated[__Node(self)]) {{ goto {}; }}\n",
+            "{}if (__node_terminated[__Node(self)]) {{ goto {}; }};\n",
             spaces, end_label
         );
     }
@@ -1505,25 +1619,25 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
             case StmtAST::If:
                 res += format("{}if({}) {{\n", spaces, exp2str(*stmt->exp));
                 res += buildLabels(*branch_it++, indent + 2, end_label);
-                res += format("{}}}\n", spaces);
+                res += format("{}}};\n", spaces);
                 if (stmt->vec_elif_exp != nullptr) {
                     for (size_t i = 0; i < stmt->vec_elif_exp->size(); ++i) {
                         auto elif_exp = (*stmt->vec_elif_exp)[i];
                         res += format("{}else if({}) {{\n", spaces, exp2str(*elif_exp));
                         res += buildLabels(*branch_it++, indent + 2, end_label);
-                        res += format("{}}}\n", spaces);
+                        res += format("{}}};\n", spaces);
                     }
                 }
                 if (stmt->else_stmts != nullptr) {
                     res += format("{}else {{\n", spaces);
                     res += buildLabels(*branch_it++, indent + 2, end_label);
-                    res += format("{}}}\n", spaces);
+                    res += format("{}}};\n", spaces);
                 }
                 break;
             case StmtAST::While:
                 res += format("{}while({}) {{\n", spaces, exp2str(*stmt->exp));
                 res += buildLabels(*branch_it++, indent + 2, end_label);
-                res += format("{}}}\n", spaces);
+                res += format("{}}};\n", spaces);
                 break;
             case StmtAST::Break:
                 [[fallthrough]];

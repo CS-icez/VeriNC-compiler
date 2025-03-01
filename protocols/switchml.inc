@@ -39,7 +39,7 @@ protocol {
 
     thread(Client) ClientSend {
     L_ClientSend:
-      send_m($[i \in AGG_SET |-> requests[i]]$);
+      unicast($[i \in AGG_SET |-> requests[i]]$);
       pending = ${i : i \in AGG_SET}$;
     }
 
