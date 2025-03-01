@@ -211,6 +211,7 @@ private:
     void addOurConstants();
     void addOurVariables();
     void addOurFns();
+    void addOurProperties();
 
     void mangleTLA(const string& type, string& tla);
 

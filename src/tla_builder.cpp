@@ -114,6 +114,7 @@ void TLABuilder::analyze(SpecAST* spec) {
     addOurConstants();
     addOurVariables();
     addOurFns();
+    addOurProperties();
 
     // Analyze protocol sections.
     for (auto protocol : protocols) {
@@ -297,11 +298,6 @@ void TLABuilder::addOurConstants() {
     strPool.emplace_back("null");
     configs.emplace_back(null, &strPool.back());
 
-    // Auxiliary functions.
-    auto first_eq = [](const string& s) {
-        return [s](const pair<string, string*>& p) { return p.first == s; };
-    };
-
     // Check that there is no duplicate if converting `nodetypes` to capitals.
     uset<string> capitals;
     for (const auto& type : nodetypes) {
@@ -344,8 +340,8 @@ void TLABuilder::addOurConstants() {
 
     // `MAX_LOSS = 0`
     auto max_loss = "MAX_LOSS";
-    bool not_defined = (std::find_if(configs.begin(), configs.end(),
-        first_eq(max_loss)) == configs.end());
+    auto proj = &decltype(configs)::value_type::first;
+    bool not_defined = (rg::find(configs, max_loss, proj) == configs.end());
     if (not_defined) {
         addNewName(max_loss, false);
         strPool.push_back("0");
@@ -353,8 +349,7 @@ void TLABuilder::addOurConstants() {
     }
     // `MAX_OUT_OF_ORDER = 0`
     auto max_out_of_order = "MAX_OUT_OF_ORDER";
-    not_defined = (std::find_if(configs.begin(), configs.end(),
-        first_eq(max_out_of_order)) == configs.end());
+    not_defined = (rg::find(configs, max_out_of_order, proj) == configs.end());
     if (not_defined) {
         addNewName(max_out_of_order, false);
         strPool.push_back("0");
@@ -370,13 +365,21 @@ void TLABuilder::addOurConstants() {
     type2constDecls[all].emplace_back("__links", &strPool.back());
 
     // `__next_hop = <<src1, dst1>> :> next1 @@ ...`
-    vector<string> route_entries;
+    t = "\n          ";
+    auto cnt = 1;
     for (const auto& src : nodes_in_order) {
         for (const auto& dst : nodes_in_order) {
-            route_entries.push_back(format("<<{}, {}>> :> {}", src, dst, nexts[src][dst]));
+            if (cnt > 1) {
+                t += " @@ ";
+            }
+            t += format("<<{}, {}>> :> {}", src, dst, nexts[src][dst]);
+            if (cnt % 3 == 0) {
+                t += "\n      ";
+            }
+            ++cnt;
         }
     }
-    strPool.push_back(join(route_entries, " @@ "));
+    strPool.push_back(t);
     type2constDecls[all].emplace_back("__next_hop", &strPool.back());
 
     // TODO: symmetry.
@@ -540,6 +543,20 @@ void TLABuilder::addOurFns() {
     vecStrPool.push_back({arg1});
     args = &vecStrPool.back();
     fns.emplace_back("__AllPossibleSeq", args, exp);
+}
+
+void TLABuilder::addOurProperties() {
+    auto proj = &decltype(configs)::value_type::first;
+    if (auto it = rg::find(configs, "TERMINATION_CHECK", proj); it != configs.end()) {
+        check(
+            *it->second == "TRUE" || *it->second == "FALSE",
+            "TERMINATION_CHECK can only be TRUE or FALSE"
+        );
+        if (*it->second == "TRUE") {
+            strPool.push_back("Termination");
+            properties.emplace_back("__Termination", &strPool.back());
+        }
+    }
 }
 
 void TLABuilder::analyze(ProtocolAST* protocol) {
@@ -1301,12 +1318,17 @@ string TLABuilder::buildTLA() {
     for (const auto& [name, tla] : invariants) {
         res += format("{} == {}\n", name, *tla);
     }
-    res += "\n";
+    if (!invariants.empty()) {
+        res += "\n";
+    }
     for (const auto& [name, tla] : properties) {
         res += format("{} == {}\n", name, *tla);
     }
+    if (!properties.empty()) {
+        res += "\n";
+    }
 
-    res += "\n====\n";
+    res += "====\n";
 
     return res;
 }

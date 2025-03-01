@@ -1,6 +1,7 @@
 configuration {
     MAX_LOSS = $0$;
     MAX_OUT_OF_ORDER = $0$;
+    TERMINATION_CHECK = $TRUE$;
     AGG_SIZE = $1$;
     REQ_NUM = $2$;
 }
@@ -36,8 +37,6 @@ protocol {
 
     fn MinElem(S) = $CHOOSE x \in S : \A y \in S : x <= y$;
     fn Flip(b) = $IF b = 1 THEN 0 ELSE 1$;
-
-    // Test comment.
 
     thread(Client) ClientSend {
     L_ClientSend:
@@ -100,9 +99,4 @@ protocol {
             }
         }
     }
-}
-
-property {
-    TestProperty = $[](TRUE)$;
-    TestInvariant = $TRUE$;
 }
