@@ -931,13 +931,15 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
                         "breakpoints are not allowed in following branches"
                     );
                     collect_last_label();
-                    path.branch_has_label = true;
                 }
                 label = LabelMeta();
                 label.name = *stmt->name;
                 DEBUG("Encounter breakpoint \033[32m{}\033[0m...", label.name);
                 addNewName(label.name, !label.name.starts_with(fake_label));
-                path = PathMeta();
+                if (!label.name.starts_with(fake_label)) {
+                    path = PathMeta();
+                    path.branch_has_label = true;
+                }
                 break;
             case StmtAST::Assign:
                 check_after_exit();
@@ -1742,13 +1744,13 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
             case StmtAST::Temp:
                 break;
             case StmtAST::If:
-                res += format("{}if({}) {{\n", spaces, exp2str(*stmt->exp));
+                res += format("{}if ({}) {{\n", spaces, exp2str(*stmt->exp));
                 res += buildLabels(*branch_it++, indent + 2, end_label);
                 res += format("{}}};\n", spaces);
                 if (stmt->vec_elif_exp != nullptr) {
                     for (size_t i = 0; i < stmt->vec_elif_exp->size(); ++i) {
                         auto elif_exp = (*stmt->vec_elif_exp)[i];
-                        res += format("{}else if({}) {{\n", spaces, exp2str(*elif_exp));
+                        res += format("{}else if ({}) {{\n", spaces, exp2str(*elif_exp));
                         res += buildLabels(*branch_it++, indent + 2, end_label);
                         res += format("{}}};\n", spaces);
                     }
