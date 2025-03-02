@@ -75,6 +75,7 @@ struct ConfigAST {
     ~ConfigAST() { delete_if(assign); }
 };
 
+// TODO: support ident[key1][key2] = exp
 struct AssignAST {
     string* ident;
     vector<ExpAST*>* keys;

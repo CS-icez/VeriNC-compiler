@@ -6,3 +6,5 @@ parser.hpp
 parser.cpp
 tla
 reference
+tla2tools.jar
+*Zone.Identifier

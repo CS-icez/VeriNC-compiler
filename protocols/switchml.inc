@@ -23,7 +23,7 @@ protocol {
         wid |-> self,
         ver |-> (i \div AGG_SIZE) % 2,
         idx |-> i % AGG_SIZE,
-        val |-> 1,
+        val |-> req_val[self, i],
         psn |-> i,
         dst |-> sw
     ]]$;
@@ -40,7 +40,7 @@ protocol {
     thread(Client) ClientSend {
     L_ClientSend:
       unicast($[i \in AGG_SET |-> requests[i]]$);
-      pending = ${i : i \in AGG_SET}$;
+      pending = $AGG_SET$;
     }
 
     thread(Client) ClientRecv {

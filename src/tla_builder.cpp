@@ -106,7 +106,7 @@ void TLABuilder::analyze(SpecAST* spec) {
             format("No node declared for node type {}", type)
         );
     }
-
+    
     // Add pre-defined symbols.
     //! It is dangerous to store pointers to container elements.
     strPool.reserve(200);
@@ -115,11 +115,24 @@ void TLABuilder::analyze(SpecAST* spec) {
     addOurVariables();
     addOurFns();
     addOurProperties();
-
+    
     // Analyze protocol sections.
     for (auto protocol : protocols) {
         analyze(protocol);
     }
+
+    // `__active_threads = [__n \in TYPE1_SET |-> num1] @@ ...`
+    vector<string> vec_exp;
+    for (const auto& type : nodetypes) {
+        auto s = format(
+            "[__n \\in {}_SET |-> {}]",
+            toUpper(type),
+            rg::count(threads, type, [&](const auto& t) { return std::get<0>(t); })
+        );
+        vec_exp.push_back(std::move(s));
+    }
+    strPool.push_back(join(vec_exp, " @@ "));
+    type2varDecls[all].emplace_back("__active_threads", &strPool.back());
 }
 
 void TLABuilder::analyze(ConfigAST* config) {
@@ -399,19 +412,6 @@ void TLABuilder::addOurVariables() {
     // `__max_out_of_order = MAX_OUT_OF_ORDER`
     strPool.push_back("MAX_OUT_OF_ORDER");
     type2varDecls[all].emplace_back("__max_out_of_order", &strPool.back());
-
-    // `__active_threads = [__n \in TYPE1_SET |-> num1] @@ ...`
-    vector<string> vec_exp;
-    for (const auto& type : nodetypes) {
-        auto s = format(
-            "[__n \\in {}_SET |-> {}]",
-            toUpper(type),
-            rg::count(threads, type, [&](const auto& t) { return std::get<0>(t); })
-        );
-        vec_exp.push_back(std::move(s));
-    }
-    strPool.push_back(join(vec_exp, " @@ "));
-    type2varDecls[all].emplace_back("__active_threads", &strPool.back());
 }
 
 void TLABuilder::addOurFns() {
@@ -564,7 +564,7 @@ void TLABuilder::addOurProperties() {
             "TERMINATION_CHECK can only be TRUE or FALSE"
         );
         if (*it->second == "TRUE") {
-            strPool.push_back("Termination");
+            strPool.push_back(R"!!(<>(\A __n \in NODE_SET : __active_threads[__n] <= 0))!!");
             properties.emplace_back("__Termination", &strPool.back());
         }
     }
@@ -1196,7 +1196,7 @@ void TLABuilder::analyzeReceiveCall([[maybe_unused]] const string& type, string&
         "`receive` should not have any arguments"
     );
     name = "__Receive";
-    args.push_back(make_ast<ExpAST>(ExpAST::TLA, n2, make_str("self")));
+    args.push_back(make_ast<ExpAST>(ExpAST::TLA, n2, make_str("__Node(self)")));
     DEBUG("Exit {}", __func__);
 }
 
@@ -1272,8 +1272,9 @@ void TLABuilder::mangleTLA(const string& type, string& tla) {
         if (is_ident_start(tla[i])) {
             auto ident = get_ident();
             if (localNames.contains(ident)) {
+                assert(type != all && "Internal error: local name in global context");
                 check(
-                    type == all || type2localNames[type].contains(ident),
+                    type2localNames[type].contains(ident),
                     format(
                         "Identifier {} in expression {} "
                         "cannot be accessed by node type {}",
@@ -1401,13 +1402,13 @@ string TLABuilder::buildTLA() {
     res += "} *)\n\n";
 
     for (const auto& [name, tla] : invariants) {
-        res += format("{} == {}\n", name, *tla);
+        res += format("\\* {} == {}\n", name, *tla);
     }
     if (!invariants.empty()) {
         res += "\n";
     }
     for (const auto& [name, tla] : properties) {
-        res += format("{} == {}\n", name, *tla);
+        res += format("\\* {} == {}\n", name, *tla);
     }
     if (!properties.empty()) {
         res += "\n";
@@ -1447,8 +1448,8 @@ string TLABuilder::buildMacros() {
 
     // __Drop
     m = "macro __Drop() {\n"
-        "  __Assert(__net_buf[__Node(self)] # {}, \"Drop: empty buffer\");\n"
-        "  net_buf[__Node(self)] := Tail(@);\n"
+        "  __Assert(__net_buf[__Node(self)] # <<>>, \"Drop: empty buffer\");\n"
+        "  __net_buf[__Node(self)] := Tail(@);\n"
         "}\n";
     res += add_indent(m) + "\n";
 
@@ -1478,7 +1479,7 @@ string TLABuilder::buildMacros() {
 
     // __DropSend
     m = "macro __DropSend(__pkt) {\n"
-        "  __Assert(__net_buf[__Node(self)] # {}, \"DropSend: empty buffer\");\n"
+        "  __Assert(__net_buf[__Node(self)] # <<>>, \"DropSend: empty buffer\");\n"
         "  with (__s = __Node(self), __h = __next_hop[__s, __pkt.dst]) {\n"
         "    either {\n"
         "      await __max_out_of_order > 0;\n"
@@ -1532,11 +1533,11 @@ string TLABuilder::buildMacros() {
         "      await Cardinality(__unlost_pkts) >= 2;\n"
         "      with (__ooo \\in __AllPossibleSeq(__unlost_pkts) \\ {__ordered}) {\n"
         "        __max_out_of_order := __max_out_of_order - 1;\n"
-        "        __net_buf[__h] := Append(@, __ooo);\n"
+        "        __net_buf[__h] := @ \\o __ooo;\n"
         "      }\n"
         "    }\n"
         "    or {\n"
-        "      __net_buf[__h] := Append(@, __ordered);\n"
+        "      __net_buf[__h] := @ \\o __ordered;\n"
         "    }\n"
         "  }\n"
         "}\n";
@@ -1544,6 +1545,7 @@ string TLABuilder::buildMacros() {
 
     // __DropUnicast
     m = "macro __DropUnicast(__pkts) {\n"
+        "  __Assert(__net_buf[__Node(self)] # <<>>, \"DropUnicast: empty buffer\");\n"
         "  with (\n"
         "    __keys = DOMAIN __pkts,\n"
         "    __dst = __pkts[CHOOSE __i \\in __keys : TRUE].dst,\n"
@@ -1565,18 +1567,18 @@ string TLABuilder::buildMacros() {
         "      with (__ooo \\in __AllPossibleSeq(__unlost_pkts) \\ {__ordered}) {\n"
         "        __max_out_of_order := __max_out_of_order - 1;\n"
         "        if (__s = __h) {\n"
-        "          __net_buf[__h] := Tail(Append(@, __ooo));\n"
+        "          __net_buf[__h] := Tail(@ \\o __ooo);\n"
         "        } else {\n"
-        "          __net_buf[__h] := Append(@, __ooo) ||\n"
+        "          __net_buf[__h] := @ \\o __ooo ||\n"
         "          __net_buf[__s] := Tail(@);\n"
         "        }\n"
         "      }\n"
         "    }\n"
         "    or {\n"
         "      if (__s = __h) {\n"
-        "        __net_buf[__h] := Tail(Append(@, __ordered));\n"
+        "        __net_buf[__h] := Tail(@ \\o __ordered);\n"
         "      } else {\n"
-        "        __net_buf[__h] := Append(@, __ordered) ||\n"
+        "        __net_buf[__h] := @ \\o __ordered ||\n"
         "        __net_buf[__s] := Tail(@);\n"
         "      }\n"
         "    }\n"
@@ -1607,7 +1609,7 @@ string TLABuilder::buildMacros() {
 
     // __DropMulticast
     m = "macro __DropMulticast(__pkt, __dsts) {\n"
-        "  __Assert(__net_buf[__Node(self)] # {}, \"DropMulticast: empty buffer\");\n"
+        "  __Assert(__net_buf[__Node(self)] # <<>>, \"DropMulticast: empty buffer\");\n"
         "  __Assert(__dsts \\subseteq __links[__Node(self)], \"DropMulticast: invalid destinations\");\n"
         "  __Assert(__Node(self) \\notin __dsts, \"DropMulticast: self in destinations\");\n"
         "  with (\n"
@@ -1635,7 +1637,7 @@ string TLABuilder::buildMacros() {
 
     // __Exit
     m = "macro __Exit() {\n"
-        "  __node_terminated[__Node(self)] := TRUE;\n"
+        "  __active_threads[__Node(self)] := 0;\n"
         "}\n";
     res += add_indent(m) + "\n";
 
@@ -1658,9 +1660,11 @@ string TLABuilder::buildProcess(const string& type, const string& name,
     );
     auto end_label = format("__L_{}_End", name);
     res += buildLabels(label_metas, 4, end_label);
-    res += format("  {}:\n", end_label);
-    res += "    skip;\n";
-    res += "  }\n";
+    res += format("  {}:\n", end_label) +
+        "    if (__active_threads[__Node(self)] > 0) {\n"
+        "      __active_threads[__Node(self)] := @ - 1;\n"
+        "    };\n"
+        "  }\n";
     return res;
 }
 
@@ -1688,7 +1692,7 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
 
     if (!label_meta.name.starts_with(fake_label) && label_meta.stmts.front()->rule != StmtAST::While) {
         res += format(
-            "{}if (__node_terminated[__Node(self)]) {{ goto {}; }};\n",
+            "{}if (__active_threads[__Node(self)] <= 0) {{ goto {}; }};\n",
             spaces, end_label
         );
         res += format("{}else {{\n", spaces);
@@ -1704,13 +1708,15 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
         res += spaces + ") {\n";
         indent += 2;
         spaces = string(indent, ' ');
-        auto involves_recv = rg::any_of(label_meta.temps, [](const auto& p) {
-            return p.second->rule == ExpAST::PrimCall && *p.second->fn_name == "__Receive";
-        });
-        if (label_meta.has_sendlike == false && involves_recv) {
-            res += format("{}__Drop();\n", spaces);
-        }
     }
+
+    auto assigns_involve_recv = [](const auto& assigns) {
+        return rg::any_of(assigns, [](const auto& ptr) {
+            auto exp = ptr->exp;
+            return exp->rule == ExpAST::PrimCall && *exp->fn_name == "__Receive";
+        });
+    };
+    auto wait_net_buf = "__Wait(__net_buf[__Node(self)] # <<>>);\n"s;
 
     for (const auto& stmt : label_meta.stmts) {
         switch (stmt->rule) {
@@ -1719,18 +1725,20 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
                 break;
             case StmtAST::Assign: {
                 vector<string> assigns;
-                bool has_recv = false;
+                auto has_recv = assigns_involve_recv(*stmt->assigns);
+                if (has_recv) {
+                    res += spaces + wait_net_buf;
+                }
                 for (const auto& assign : *stmt->assigns) {
                     auto lhs = *assign->ident;
+                    if (localNames.contains(lhs)) {
+                        lhs += "[__Node(self)]";
+                    }
                     if (assign->keys != nullptr) {
                         lhs += format("[{}]", join(exps2strs(*assign->keys), ", "));
                     }
                     auto rhs = exp2str(*assign->exp);
                     assigns.push_back(format("{} := {}", lhs, rhs));
-                    auto exp = assign->exp;
-                    if (exp->rule == ExpAST::PrimCall && *exp->fn_name == "__Receive") {
-                        has_recv = true;
-                    }
                 }
                 res += spaces + join(assigns, " || ") + ";\n";
                 if (label_meta.has_sendlike == false && has_recv) {
@@ -1744,14 +1752,24 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
             case StmtAST::PrimCall: {
                 auto name = *stmt->name;
                 auto args = exps2strs(*stmt->exps);
+                if (name == "__Receive") {
+                    res += spaces + wait_net_buf;
+                }
                 res += format("{}{}({});\n", spaces, name, join(args, ", "));
                 if (label_meta.has_sendlike == false && name == "__Receive") {
                     res += format("{}__Drop();\n", spaces);
                 }
                 break;
             }
-            case StmtAST::Temp:
+            case StmtAST::Temp: {
+                if (assigns_involve_recv(*stmt->assigns)) {
+                    res += spaces + wait_net_buf;
+                    if (label_meta.has_sendlike == false) {
+                        res += format("{}__Drop();\n", spaces);
+                    }
+                }
                 break;
+            }
             case StmtAST::If:
                 res += format("{}if ({}) {{\n", spaces, exp2str(*stmt->exp));
                 res += buildLabels(*branch_it++, indent + 2, end_label);
@@ -1773,7 +1791,7 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
             case StmtAST::While:
                 res += format("{}while({}) {{\n", spaces, exp2str(*stmt->exp));
                 res += format(
-                    "{}  if (__node_terminated[__Node(self)]) {{ goto {}; }};\n",
+                    "{}  if (__active_threads[__Node(self)] <= 0) {{ goto {}; }};\n",
                     spaces, end_label
                 );
                 res += format("{}  else {{\n", spaces);
@@ -1829,4 +1847,21 @@ string TLABuilder::buildCFG() {
     }
     // TODO: symmetry.
     return res;
+}
+
+string TLABuilder::uncommentProperties(const string& program) {
+    auto marker = "\\* END TRANSLATION"s;
+    auto end_translation = program.find(marker);
+    check(
+        end_translation != string::npos,
+        "Cannot find the end of the translation"
+    );
+
+    auto property_pos = end_translation + marker.length();
+    auto first_half = program.substr(0, property_pos);
+    auto second_half = program.substr(property_pos);
+
+    second_half = std::regex_replace(second_half, std::regex(R"!!(\\\* )!!"), "");
+
+    return first_half + second_half;
 }

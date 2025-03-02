@@ -92,7 +92,7 @@ public:
     ~TLABuilder() { delete spec; }
 
     auto build() -> pair<string, string>;
-
+    static string uncommentProperties(const string& program);
 private:
     SpecAST* spec;
     string module_name;
@@ -169,7 +169,7 @@ private:
     vector<tuple<string, string, vector<LabelMeta>>> threads;
 
 
-    void check(bool cond, const string& msg);
+    static void check(bool cond, const string& msg);
     void addNewName(const string& name, bool is_user_defined = true);
 
     void analyze(SpecAST* spec);
