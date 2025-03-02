@@ -16,6 +16,8 @@ YACC_SRCS = $(wildcard $(SRC_DIRS)/*.y)
 OBJS = $(patsubst $(SRC_DIRS)/%.cpp, $(OBJ_DIR)/%.o, $(SRCS))
 OBJS += $(OBJ_DIR)/scanner.o $(OBJ_DIR)/parser.o
 
+DEPS = $(OBJS:.o=.d)
+
 LEX_GEN = $(SRC_DIRS)/scanner.cpp
 YACC_GEN = $(SRC_DIRS)/parser.cpp $(SRC_DIRS)/parser.hpp
 
@@ -27,7 +29,7 @@ $(TARGET): $(OBJS)
 
 $(OBJ_DIR)/%.o: $(SRC_DIRS)/%.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -MMD -MP -MF $(OBJ_DIR)/$*.d -c $< -o $@
 
 $(LEX_GEN): $(LEX_SRCS) $(YACC_GEN)
 	@mkdir -p $(dir $@)
@@ -44,6 +46,8 @@ $(OBJ_DIR)/scanner.o: $(LEX_GEN)
 $(OBJ_DIR)/parser.o: $(SRC_DIRS)/parser.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+-include $(DEPS)
 
 clean:
 	rm -rf $(OBJ_DIR) $(TARGET) $(LEX_GEN) $(YACC_GEN)

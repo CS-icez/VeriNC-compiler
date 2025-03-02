@@ -11,13 +11,12 @@ topology {
     node(Client) c1, c2, c3;
     node(Switch) sw;
     link c1, c2, c3 -- sw;
-    route(c1) { c2, c3 : sw; }
 }
 
 protocol {
     const(all) REQ_SET = $0..(REQ_NUM - 1)$, AGG_SET = $0..(AGG_SIZE - 1)$;
-    const(all) req_val = $[ip \in CLIENT_SET, i \in REQ_SET |-> RandomElement(0..100000)]$;
-    const(all) res = $[i \in REQ_SET |-> SumSet({req_val[ip, i] : ip \in CLIENT_SET})]$;
+    const(all) req_val = $[c \in CLIENT_SET, i \in REQ_SET |-> RandomElement(0..100000)]$;
+    const(all) res = $[i \in REQ_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})]$;
     var(all) active_clients = $CLIENT_SET$;
 
     var(Client) requests = $[i \in REQ_SET |-> [
@@ -49,7 +48,7 @@ protocol {
         while ($TRUE$) {
             wait($pending # null$);
             temp pkt = receive();
-            assert($pkt.val = res[pkt.psn]$, $"ClientAck: incorrect value"$);
+            assert($pkt.val = res[pkt.psn]$, $"ClientRecv: incorrect value"$);
             if ($pkt.psn + AGG_SIZE < REQ_NUM$) {
                 send($requests[pkt.psn + AGG_SIZE]$);
                 pending = $(pending \ {pkt.psn}) \cup {pkt.psn + AGG_SIZE}$;
