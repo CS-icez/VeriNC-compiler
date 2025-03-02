@@ -400,9 +400,18 @@ void TLABuilder::addOurVariables() {
     strPool.push_back("MAX_OUT_OF_ORDER");
     type2varDecls[all].emplace_back("__max_out_of_order", &strPool.back());
 
-    // '__node_terminated = [__n \in NODE_SET |-> FALSE])'
-    strPool.push_back(R"!!([__n \in NODE_SET |-> FALSE])!!");
-    type2varDecls[all].emplace_back("__node_terminated", &strPool.back());
+    // `__active_threads = [__n \in TYPE1_SET |-> num1] @@ ...`
+    vector<string> vec_exp;
+    for (const auto& type : nodetypes) {
+        auto s = format(
+            "[__n \\in {}_SET |-> {}]",
+            toUpper(type),
+            rg::count(threads, type, [&](const auto& t) { return std::get<0>(t); })
+        );
+        vec_exp.push_back(std::move(s));
+    }
+    strPool.push_back(join(vec_exp, " @@ "));
+    type2varDecls[all].emplace_back("__active_threads", &strPool.back());
 }
 
 void TLABuilder::addOurFns() {
