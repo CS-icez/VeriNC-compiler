@@ -27,7 +27,7 @@ protocol {
         psn |-> i,
         dst |-> sw
     ]]$;
-    var(Client) pending = $null$;
+    var(Client) pending = ${}$;
 
     var(Switch)
         pool = $[i \in {0, 1}, j \in AGG_SET |-> 0]$,
@@ -46,7 +46,6 @@ protocol {
     thread(Client) ClientRecv {
     L_ClientRecv:
         while ($TRUE$) {
-            wait($pending # null$);
             temp pkt = receive();
             assert($pkt.val = res[pkt.psn]$, $"ClientRecv: incorrect value"$);
             if ($pkt.psn + AGG_SIZE < REQ_NUM$) {
@@ -65,7 +64,6 @@ protocol {
     thread(Client) ClientRetx {
     L_ClientRetx:
         while ($TRUE$) {
-            wait($pending # null$);
             wait($pending # {}$);
             temp i = $MinElem(pending)$;
             wait($requests[i] \notin ToSet(__net_buf[sw])$);

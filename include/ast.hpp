@@ -80,9 +80,10 @@ struct AssignAST {
     string* ident;
     vector<ExpAST*>* keys;
     ExpAST* exp;
+    bool is_choice;
 
-    AssignAST(string* _ident, vector<ExpAST*>* _keys, ExpAST* _exp) :
-        ident(_ident), keys(_keys), exp(_exp) { }
+    AssignAST(string* _ident, vector<ExpAST*>* _keys, ExpAST* _exp, bool _is_choice) :
+        ident(_ident), keys(_keys), exp(_exp), is_choice(_is_choice) { }
     ~AssignAST() {
         delete_if(ident);
         delete_if(keys);
@@ -99,13 +100,13 @@ struct TopologyAST {
     } rule;
     vector<TypeAST*>* types;
     TypeAST* type;
-    vector<string*>* nodes;
+    vector<AssignAST*>* nodes;
     vector<vector<string*>*>* vec_nodes;
     vector<string*>* srcs;
     vector<RouteEntryAST*>* entries;
 
     TopologyAST(Rule _rule, vector<TypeAST*>* _types, TypeAST* _type,
-        vector<string*>* _nodes, vector<vector<string*>*>* _vec_nodes,
+        vector<AssignAST*>* _nodes, vector<vector<string*>*>* _vec_nodes,
         vector<string*>* _srcs, vector<RouteEntryAST*>* _entries) :
         rule(_rule), types(_types), type(_type), nodes(_nodes),
             vec_nodes(_vec_nodes), srcs(_srcs), entries(_entries) { }

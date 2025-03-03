@@ -47,6 +47,7 @@ Identifier    [a-zA-Z_][a-zA-Z0-9_]*
 "fn"            { return FN; }
 "thread"        { return THREAD; }
 "temp"          { return TEMP; }
+"in"            { return IN; }
 
 "if"            { return IF; }
 "elif"          { return ELIF; }

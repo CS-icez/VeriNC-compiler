@@ -109,8 +109,6 @@ void TLABuilder::analyze(SpecAST* spec) {
     
     // Add pre-defined symbols.
     //! It is dangerous to store pointers to container elements.
-    strPool.reserve(200);
-    vecStrPool.reserve(100);
     addOurConstants();
     addOurVariables();
     addOurFns();
@@ -131,8 +129,7 @@ void TLABuilder::analyze(SpecAST* spec) {
         );
         vec_exp.push_back(std::move(s));
     }
-    strPool.push_back(join(vec_exp, " @@ "));
-    type2varDecls[all].emplace_back("__active_threads", &strPool.back());
+    type2varDecls[all].emplace_back("__active_threads", join(vec_exp, " @@ "));
 }
 
 void TLABuilder::analyze(ConfigAST* config) {
@@ -148,12 +145,16 @@ void TLABuilder::analyze(ConfigAST* config) {
         assign->keys == nullptr,
         format("LHS of configuration should be an identifier")
     );
+    check(
+        !assign->is_choice,
+        "Configuration should not involve nondeterminism"
+    );
     auto exp = assign->exp;
     check(
         exp->rule == ExpAST::TLA,
         format("RHS of configuration {} should not involve primitive calls", name)
     );
-    configs.emplace_back(name, exp->tla);
+    configs.emplace_back(name, *exp->tla);
 }
 
 void TLABuilder::analyze(TopologyAST* topology) {
@@ -173,17 +174,29 @@ void TLABuilder::analyze(TopologyAST* topology) {
                 format("Declare nodes of unknown node type {}", type)
             );
             for (auto node : *topology->nodes) {
-                addNewName(*node);
-                nodes.insert(*node);
-                nodes_in_order.push_back(*node);
-                type2nodes[type].push_back(*node);
+                auto& ident = *node->ident;
+                addNewName(ident);
+                nodes.insert(ident);
+                nodes_in_order.push_back(ident);
+                type2nodes[type].push_back(ident);
+
+                auto exp = node->exp;
+                if (exp != nullptr) {
+                    check(
+                        exp->rule == ExpAST::TLA,
+                        format("The numeric value of node {} should not involve primitive calls", ident)
+                    );
+                    configs.emplace_back(ident, exp2str(*exp));
+                } else {
+                    configs.emplace_back(ident, ident);
+                }
 
                 // Initialize nexts.
                 for (auto s : nodes) {
-                    nexts[*node][s] = null;
-                    nexts[s][*node] = null;
+                    nexts[ident][s] = null;
+                    nexts[s][ident] = null;
                 }
-                nexts[*node][*node] = *node;
+                nexts[ident][ident] = ident;
             }
             break;
         }
@@ -308,8 +321,7 @@ string TLABuilder::toUpper(const string& str) {
 
 void TLABuilder::addOurConstants() {
     // `null = null`
-    strPool.emplace_back("null");
-    configs.emplace_back(null, &strPool.back());
+    configs.emplace_back(null, null);
 
     // Check that there is no duplicate if converting `nodetypes` to capitals.
     uset<string> capitals;
@@ -323,52 +335,40 @@ void TLABuilder::addOurConstants() {
 
     string t = null;
 
-    // `node = node`
-    auto proj = &decltype(configs)::value_type::first;
-    for (auto& node : nodes_in_order) {
-        if (rg::find(configs, node, proj) == configs.end()) {
-            configs.emplace_back(node, &node);
-        }
-    }
-
     for (const auto& type : nodetypes) {
         // `TYPE_SET = {node1, node2, ...}`
         auto type_set = toUpper(type) + "_SET";
         addNewName(type_set, false);
         t = "{"s + join(type2nodes[type], ", ") + "}";
-        strPool.push_back(t);
-        type2constDecls[all].emplace_back(type_set, &strPool.back());
+        type2constDecls[all].emplace_back(type_set, t);
 
         // `TYPE_NUM = Cardinality(TYPE_SET)`
         auto type_num = toUpper(type) + "_NUM";
         addNewName(type_num, false);
         t = format("Cardinality({})", type_set);
-        strPool.push_back(t);
-        type2constDecls[all].emplace_back(type_num, &strPool.back());
+        type2constDecls[all].emplace_back(type_num, t);
     }
 
     // `NODE_SET = {node1, node2, ...}`
     auto node_set = "NODE_SET";
     addNewName(node_set, false);
     t = string("{") + join(nodes_in_order, ", ") + "}";
-    strPool.push_back(t);
-    type2constDecls[all].emplace_back(node_set, &strPool.back());
+    type2constDecls[all].emplace_back(node_set, t);
 
     // `MAX_LOSS = 0`
     auto max_loss = "MAX_LOSS";
+    auto proj = &decltype(configs)::value_type::first;
     bool not_defined = (rg::find(configs, max_loss, proj) == configs.end());
     if (not_defined) {
         addNewName(max_loss, false);
-        strPool.push_back("0");
-        configs.emplace_back(max_loss, &strPool.back());
+        configs.emplace_back(max_loss, "0");
     }
     // `MAX_OUT_OF_ORDER = 0`
     auto max_out_of_order = "MAX_OUT_OF_ORDER";
     not_defined = (rg::find(configs, max_out_of_order, proj) == configs.end());
     if (not_defined) {
         addNewName(max_out_of_order, false);
-        strPool.push_back("0");
-        configs.emplace_back(max_out_of_order, &strPool.back());
+        configs.emplace_back(max_out_of_order, "0");
     }
 
     // `__links = src1 :> {dst1, ...} @@ ...`
@@ -376,8 +376,7 @@ void TLABuilder::addOurConstants() {
     for (const auto& src : nodes_in_order) {
         link_entries.push_back(format("{} :> {{{}}}", src, join(links[src], ", ")));
     }
-    strPool.push_back(join(link_entries, " @@ "));
-    type2constDecls[all].emplace_back("__links", &strPool.back());
+    type2constDecls[all].emplace_back("__links", join(link_entries, " @@ "));
 
     // `__next_hop = <<src1, dst1>> :> next1 @@ ...`
     t = "\n          ";
@@ -394,32 +393,27 @@ void TLABuilder::addOurConstants() {
             ++cnt;
         }
     }
-    strPool.push_back(t);
-    type2constDecls[all].emplace_back("__next_hop", &strPool.back());
+    type2constDecls[all].emplace_back("__next_hop", t);
 
     // TODO: symmetry.
 }
 
 void TLABuilder::addOurVariables() {
     // `__net_buf = [__n \in NODE_SET |-> <<>>]`
-    strPool.push_back(R"!!([__n \in NODE_SET |-> <<>>])!!");
-    type2varDecls[all].emplace_back("__net_buf", &strPool.back());
+    type2varDecls[all].emplace_back(
+        "__net_buf",
+        R"!!([__n \in NODE_SET |-> <<>>])!!"
+    );
 
     // `__max_loss = MAX_LOSS`
-    strPool.push_back("MAX_LOSS");
-    type2varDecls[all].emplace_back("__max_loss", &strPool.back());
+    type2varDecls[all].emplace_back("__max_loss", "MAX_LOSS");
 
     // `__max_out_of_order = MAX_OUT_OF_ORDER`
-    strPool.push_back("MAX_OUT_OF_ORDER");
-    type2varDecls[all].emplace_back("__max_out_of_order", &strPool.back());
+    type2varDecls[all].emplace_back("__max_out_of_order", "MAX_OUT_OF_ORDER");
 }
 
 void TLABuilder::addOurFns() {
-    string* exp = nullptr;
-    string* arg1 = nullptr;
-    string* arg2 = nullptr;
-    string* arg3 = nullptr;
-    vector<string*>* args = nullptr;
+    string exp = null;
 
     auto add_indent = [](const string& s) {
         const string ident = "      ";
@@ -427,13 +421,11 @@ void TLABuilder::addOurFns() {
     };
 
     // `__MinPsnElem(S) == CHOOSE x \in S : \A y \in S : x.psn <= y.psn`
-    strPool.push_back(R"!!(CHOOSE __x \in __S : \A __y \in __S : __x.psn <= __y.psn)!!");
-    exp = &strPool.back();
-    strPool.push_back("__S");
-    arg1 = &strPool.back();
-    vecStrPool.push_back({arg1});
-    args = &vecStrPool.back();
-    fns.emplace_back("__MinPsnElem", args, exp);
+    fns.emplace_back(
+        "__MinPsnElem",
+        vector<string>{"__S"},
+        R"!!(CHOOSE __x \in __S : \A __y \in __S : __x.psn <= __y.psn)!!"
+    );
 
     // ```
     // __Set2OrderedSeq(S) ==
@@ -444,78 +436,57 @@ void TLABuilder::addOurFns() {
     //       ELSE LET x == __MinPsnElem(SS) IN F(Append(res, x), S \ {x})
     //   IN F(<<>>, S)
     // ```
-    strPool.push_back(add_indent(
+    exp = add_indent(
         "LET\n"
         "  RECURSIVE F(_, _)\n"
         "  F(__res, __SS) == IF __SS = {}\n"
         "    THEN __res\n"
         "    ELSE LET __x == __MinPsnElem(__SS) IN F(Append(__res, __x), __SS \\ {__x})\n"
         "IN F(<<>>, __S)"
-    ));
-    exp = &strPool.back();
-    strPool.push_back("__S");
-    arg1 = &strPool.back();
-    vecStrPool.push_back({arg1});
-    args = &vecStrPool.back();
-    fns.emplace_back("__Set2OrderedSeq", args, exp);
+    );
+    fns.emplace_back("__Set2OrderedSeq", vector<string>{"__S"}, exp);
 
     // `__OutOfOrderRange(seq) == 1..Len(seq)`
-    strPool.push_back("1..Len(__seq)");
-    exp = &strPool.back();
-    strPool.push_back("__seq");
-    arg1 = &strPool.back();
-    vecStrPool.push_back({arg1});
-    args = &vecStrPool.back();
-    fns.emplace_back("__OutOfOrderRange", args, exp);
+    fns.emplace_back(
+        "__OutOfOrderRange",
+        vector<string>{"__seq"},
+        "1..Len(__seq)"
+    );
 
     // `__InsertAtEnd(seq, i, elem) == InsertAt(seq, Len(seq) - i + 1, elem)`
-    strPool.push_back("InsertAt(__seq, Len(__seq) - __i + 1, __elem)");
-    exp = &strPool.back();
-    strPool.push_back("__seq");
-    arg1 = &strPool.back();
-    strPool.push_back("__i");
-    arg2 = &strPool.back();
-    strPool.push_back("__elem");
-    arg3 = &strPool.back();
-    vecStrPool.push_back({arg1, arg2, arg3});
-    args = &vecStrPool.back();
-    fns.emplace_back("__InsertAtEnd", args, exp);
+    fns.emplace_back(
+        "__InsertAtEnd",
+        vector<string>{"__seq", "__i", "__elem"},
+        "InsertAt(__seq, Len(__seq) - __i + 1, __elem)"
+    );
 
     // `__Receive(n) == Head(__net_buf[n])`
-    strPool.push_back("Head(__net_buf[__n])");
-    exp = &strPool.back();
-    strPool.push_back("__n");
-    arg1 = &strPool.back();
-    vecStrPool.push_back({arg1});
-    args = &vecStrPool.back();
-    fns.emplace_back("__Receive", args, exp);
+    fns.emplace_back(
+        "__Receive",
+        vector<string>{"__n"},
+        "Head(__net_buf[__n])"
+    );
 
     // `__Node(__thread) == Head(__thread)`
-    strPool.push_back("Head(__thread)");
-    exp = &strPool.back();
-    strPool.push_back("__thread");
-    arg1 = &strPool.back();
-    vecStrPool.push_back({arg1});
-    args = &vecStrPool.back();
-    fns.emplace_back("__Node", args, exp);
+    fns.emplace_back(
+        "__Node",
+        vector<string>{"__thread"},
+        "Head(__thread)"
+    );
 
     // `__PosCount(f) == Cardinality({x \in DOMAIN f : f[x] > 0})`
-    strPool.push_back("Cardinality({__x \\in DOMAIN __f : __f[__x] > 0})");
-    exp = &strPool.back();
-    strPool.push_back("__f");
-    arg1 = &strPool.back();
-    vecStrPool.push_back({arg1});
-    args = &vecStrPool.back();
-    fns.emplace_back("__PosCount", args, exp);
+    fns.emplace_back(
+        "__PosCount",
+        vector<string>{"__f"},
+        "Cardinality({__x \\in DOMAIN __f : __f[__x] > 0})"
+    );
 
     // `__AllPossibleLoss(S) == {s \in SUBSET S : Cardinality(s) <= __max_loss}`
-    strPool.push_back("{__s \\in SUBSET __S : Cardinality(__s) <= __max_loss}");
-    exp = &strPool.back();
-    strPool.push_back("__S");
-    arg1 = &strPool.back();
-    vecStrPool.push_back({arg1});
-    args = &vecStrPool.back();
-    fns.emplace_back("__AllPossibleLoss", args, exp);
+    fns.emplace_back(
+        "__AllPossibleLoss",
+        vector<string>{"__S"},
+        "{__s \\in SUBSET __S : Cardinality(__s) <= __max_loss}"
+    );
 
     // TODO: construct rather than filter
     // ```
@@ -529,7 +500,7 @@ void TLABuilder::addOurFns() {
     //     }
     //   IN ooo_set_possible
     // ```
-    strPool.push_back(add_indent(
+    exp = add_indent(
         "LET\n"
         "  __max_range == 0..Max({Len(__net_buf[__i]) : __i \\in __S})\n"
         "  __ooo_set == [__S -> __max_range]\n"
@@ -538,34 +509,29 @@ void TLABuilder::addOurFns() {
         "    /\\ __PosCount(__i) <= __max_out_of_order\n"
         "  }\n"
         "IN __ooo_set_possible"
-    ));
-    exp = &strPool.back();
-    strPool.push_back("__S");
-    arg1 = &strPool.back();
-    vecStrPool.push_back({arg1});
-    args = &vecStrPool.back();
-    fns.emplace_back("__AllPossibleOutOfOrder", args, exp);
+    );
+    fns.emplace_back("__AllPossibleOutOfOrder", vector<string>{"__S"}, exp);
 
     // `__AllPossibleSeq(S) == {seq \in [1..Cardinality(S) -> S] : IsInjective(seq)}`
-    strPool.push_back("{__seq \\in [1..Cardinality(__S) -> __S] : IsInjective(__seq)}");
-    exp = &strPool.back();
-    strPool.push_back("__S");
-    arg1 = &strPool.back();
-    vecStrPool.push_back({arg1});
-    args = &vecStrPool.back();
-    fns.emplace_back("__AllPossibleSeq", args, exp);
+    fns.emplace_back(
+        "__AllPossibleSeq",
+        vector<string>{"__S"},
+        "{__seq \\in [1..Cardinality(__S) -> __S] : IsInjective(__seq)}"
+    );
 }
 
 void TLABuilder::addOurProperties() {
     auto proj = &decltype(configs)::value_type::first;
     if (auto it = rg::find(configs, "TERMINATION_CHECK", proj); it != configs.end()) {
         check(
-            *it->second == "TRUE" || *it->second == "FALSE",
+            it->second == "TRUE" || it->second == "FALSE",
             "TERMINATION_CHECK can only be TRUE or FALSE"
         );
-        if (*it->second == "TRUE") {
-            strPool.push_back(R"!!(<>(\A __n \in NODE_SET : __active_threads[__n] <= 0))!!");
-            properties.emplace_back("__Termination", &strPool.back());
+        if (it->second == "TRUE") {
+            properties.emplace_back(
+                "__Termination",
+                R"!!(<>(\A __n \in NODE_SET : __active_threads[__n] <= 0))!!"
+            );
         }
     }
 }
@@ -599,7 +565,10 @@ void TLABuilder::analyze(ProtocolAST* protocol) {
                 exp->rule == ExpAST::TLA,
                 format("RHS of function {} should not involve primitive calls", name)
             );
-            fns.emplace_back(name, protocol->params, exp->tla);
+            vector<string> params;
+            rg::transform(*protocol->params, std::back_inserter(params),
+                [](const auto& s) { return *s; });
+            fns.emplace_back(name, std::move(params), *exp->tla);
             break;
         }
         case ProtocolAST::Thread:
@@ -632,6 +601,10 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
         assign->keys == nullptr,
         format("LHS of {} declaration should be an identifier", cv)
     );
+    check(
+        !assign->is_choice,
+        format("{} declaration should not involve nondeterminism", cv)
+    );
     auto exp = assign->exp;
     check(
         exp->rule == ExpAST::TLA,
@@ -639,12 +612,13 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
     );
     // Replace `self` with `__n`.
     *exp->tla = std::regex_replace(*exp->tla, std::regex("self"), "__n");
+    mangleTLA(type, *exp->tla);
 
     if (is_const) {
-        type2constDecls[type].emplace_back(name, exp->tla);
+        type2constDecls[type].emplace_back(name, *exp->tla);
         type2constNames[type].insert(name);
     } else {
-        type2varDecls[type].emplace_back(name, exp->tla);
+        type2varDecls[type].emplace_back(name, *exp->tla);
         type2varNames[type].insert(name);
     }
 }
@@ -1021,7 +995,7 @@ void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assig
     DEBUG("Enter {}", __func__);
     DEBUG_VAR(path.has_recv);
     assert(!assigns.empty() && "Ill-formed AST: empty assignment list");
-    
+
     // Check that elements of `assigns` have the same `ident` field.
     auto ident = *assigns[0]->ident;
     check(
@@ -1045,6 +1019,10 @@ void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assig
                 mangleTLA(type, *key->tla);
             }
         }
+        check(
+            !assign->is_choice,
+            format("Assignment to {} should not involve nondeterminism", ident)
+        );
         switch (exp->rule) {
             case ExpAST::TLA:
                 mangleTLA(type, *exp->tla);
@@ -1201,7 +1179,7 @@ void TLABuilder::analyzeReceiveCall([[maybe_unused]] const string& type, string&
 }
 
 bool TLABuilder::analyzeTempStmt(const string& type, vector<AssignAST*>& assigns,
-    vector<pair<string, ExpAST*>>& temps, PathMeta& path) {
+    decltype(LabelMeta::temps)& temps, PathMeta& path) {
     DEBUG("Enter {}", __func__);
     assert(!assigns.empty() && "Ill-formed AST: empty assignment list");
     
@@ -1241,7 +1219,7 @@ bool TLABuilder::analyzeTempStmt(const string& type, vector<AssignAST*>& assigns
                 assert(false && "Internal error: unknown expression type");
         }
 
-        temps.emplace_back(*assign->ident, exp);
+        temps.emplace_back(*assign->ident, exp, assign->is_choice);
     }
 
     DEBUG("Exit {}", __func__);
@@ -1270,18 +1248,26 @@ void TLABuilder::mangleTLA(const string& type, string& tla) {
 
     while (i < tla.size()) {
         if (is_ident_start(tla[i])) {
+            auto start = i;
             auto ident = get_ident();
             if (localNames.contains(ident)) {
                 assert(type != all && "Internal error: local name in global context");
+                bool is_key = start > 0 && (
+                    tla[start - 1] == '.' || tla[start - 1] == '['
+                        || tla[start - 1] == '"'
+                        || (start > 1 && tla[start - 1] == ' ' && tla[start - 2] == ',')
+                );
                 check(
-                    type2localNames[type].contains(ident),
+                    // TODO: a real expression grammar.
+                    type2localNames[type].contains(ident) || is_key,
                     format(
                         "Identifier {} in expression {} "
                         "cannot be accessed by node type {}",
                         ident, tla, type
                     )
                 );
-                res += ident + "[__Node(self)]";
+
+                res += ident + (is_key ? "" : "[__Node(self)]");
             }
             else {
                 // TODO: check if `ident` is undeclared.
@@ -1315,9 +1301,9 @@ void TLABuilder::analyze(PropertyAST* property) {
     mangleTLA(all, *tla);
     bool is_temporal = (tla->starts_with("[]") || tla->starts_with("<>"));
     if (is_temporal) {
-        properties.emplace_back(name, tla);
+        properties.emplace_back(name, *tla);
     } else {
-        invariants.emplace_back(name, tla);
+        invariants.emplace_back(name, *tla);
     }
 }
 
@@ -1345,6 +1331,7 @@ vector<string> TLABuilder::exps2strs(const vector<ExpAST*>& exps) {
 }
 
 string TLABuilder::buildTLA() {
+    DEBUG("Enter {}", __func__);
     string res;
     res += format("---- MODULE {} ----\n\n", module_name);
     res += "EXTENDS Integers, Sequences, FiniteSets, "
@@ -1362,11 +1349,11 @@ string TLABuilder::buildTLA() {
     for (const auto& [type, vec] : type2varDecls) {
         for (const auto& [name, tla] : vec) {
             if (type == all) {
-                res += format("    {} = {};\n", name, *tla);
+                res += format("    {} = {};\n", name, tla);
             } else {
                 res += format(
                     "    {} = [__n \\in {} |-> ({})];\n",
-                    name, toUpper(type) + "_SET", *tla
+                    name, toUpper(type) + "_SET", tla
                 );
             }
         }
@@ -1377,18 +1364,18 @@ string TLABuilder::buildTLA() {
     for (const auto& [type, vec] : type2constDecls) {
         for (const auto& [name, tla] : vec) {
             if (type == all) {
-                res += format("    {} == {}\n", name, *tla);
+                res += format("    {} == {}\n", name, tla);
             } else {
                 res += format(
                     "    {} == [__n \\in {} |-> ({})]\n",
-                    name, toUpper(type) + "_SET", *tla
+                    name, toUpper(type) + "_SET", tla
                 );
             }
         }
     }
     res += "\n";
     for (const auto& [name, params, tla] : fns) {
-        res += format("    {}({}) == {}\n", name, join(*params, ", "), *tla);
+        res += format("    {}({}) == {}\n", name, join(params, ", "), tla);
     }
     res += "  }\n\n\n";
 
@@ -1402,13 +1389,13 @@ string TLABuilder::buildTLA() {
     res += "} *)\n\n";
 
     for (const auto& [name, tla] : invariants) {
-        res += format("\\* {} == {}\n", name, *tla);
+        res += format("\\* {} == {}\n", name, tla);
     }
     if (!invariants.empty()) {
         res += "\n";
     }
     for (const auto& [name, tla] : properties) {
-        res += format("\\* {} == {}\n", name, *tla);
+        res += format("\\* {} == {}\n", name, tla);
     }
     if (!properties.empty()) {
         res += "\n";
@@ -1416,10 +1403,12 @@ string TLABuilder::buildTLA() {
 
     res += "====\n";
 
+    DEBUG("Exit {}", __func__);
     return res;
 }
 
 string TLABuilder::buildMacros() {
+    DEBUG("Enter {}", __func__);
     const string ident = "  ";
     auto add_indent = [&ident](const std::string& s) {
         auto res = ident;
@@ -1648,11 +1637,14 @@ string TLABuilder::buildMacros() {
     res += add_indent(m) + "\n";
 
     res.pop_back();
+    DEBUG("Exit {}", __func__);
     return res;
 }
 
 string TLABuilder::buildProcess(const string& type, const string& name,
     const vector<LabelMeta>& label_metas) {
+    DEBUG("Enter {}", __func__);
+    DEBUG_VAR(name);
     string res;
     res += format(
         R"!!(  fair+ process ({} \in ({} \X {{"{}"}})) {{)!!" "\n",
@@ -1665,6 +1657,7 @@ string TLABuilder::buildProcess(const string& type, const string& name,
         "      __active_threads[__Node(self)] := @ - 1;\n"
         "    };\n"
         "  }\n";
+    DEBUG("Exit {}", __func__);
     return res;
 }
 
@@ -1679,6 +1672,8 @@ string TLABuilder::buildLabels(const vector<LabelMeta>& label_metas, int indent,
 
 string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
     const string& end_label) {
+    DEBUG("Enter {}", __func__);
+    DEBUG_VAR(label_meta.name);
     assert(indent >= 4 && "Internal error: invalid indentation number");
 
     auto spaces = string(indent, ' ');
@@ -1702,8 +1697,11 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
 
     if (!label_meta.temps.empty()) {
         res += format("{}with (\n", spaces);
-        for (const auto& [name, exp] : label_meta.temps) {
-            res += format("{}  {} = {},\n", spaces, name, exp2str(*exp));
+        for (const auto& [name, exp, is_choice] : label_meta.temps) {
+            res += format(
+                "{}  {} {} {},\n",
+                spaces, name, is_choice ? "\\in" : "=", exp2str(*exp)
+            );
         }
         res += spaces + ") {\n";
         indent += 2;
@@ -1823,15 +1821,19 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
         res += spaces + "};\n";
     }
 
+    DEBUG("Exit {}", __func__);
     return res;
 }
 
 string TLABuilder::buildCFG() {
+    DEBUG("Enter {}", __func__);
     string res;
     res += "SPECIFICATION Spec\n";
     res += "CONSTANTS\n";
     for (const auto& [name, tla] : configs) {
-        res += format("  {} = {}\n", name, *tla);
+        DEBUG_VAR(name);
+        cout << "tla: " << tla << endl;
+        res += format("  {} = {}\n", name, tla);
     }
     if (!invariants.empty()) {
         res += "INVARIANTS\n";
@@ -1846,6 +1848,7 @@ string TLABuilder::buildCFG() {
         }
     }
     // TODO: symmetry.
+    DEBUG("Exit {}", __func__);
     return res;
 }
 

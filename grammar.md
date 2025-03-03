@@ -21,7 +21,7 @@ Section ::= "configuration" "{" Config* "}"
 Config ::= Assign ";"
 Assign ::= IDENT ("[" Comma<Exp> "]")? "=" Exp
 Topology ::= "nodetype" Comma<Type> ";"
-           | "node" "(" Type ")" Comma<IDENT> ";"
+           | "node" "(" Type ")" Comma<IDENT ("=" Exp)?> ";"
            | "link" Comma<IDENT> ("--" Comma<IDENT>)* ";"
            | "route" "(" Comma<IDENT> ")" "{" RouteEntry* "}"
 Type ::= IDENT
@@ -33,11 +33,12 @@ Stmt ::= Breakpoint ":"
        | Comma<Assign> ";"
        | ";"
        | PrimCall ";"
-       | "temp" Comma<Assign> ";"
+       | "temp" Comma<Assign | Choice> ";"
        | "if" "(" Exp ")" "{" Stmt* "}"
          ("elif" "(" Exp ")" "{" Stmt* "}")*
          ("else" "{" Stmt* "}")?
        | "while" "(" Exp ")" "{" Stmt* "}"
+Choice ::= IDENT "in" Exp
 Breakpoint ::= IDENT
 PrimCall ::= Primitive "(" Comma<Exp>? ")"
 Primitive ::= "send" | "unicast" | "multicast" | "receive"
@@ -61,3 +62,5 @@ Ctl ::= Exp | "[]" Exp | "<>" Exp | ...
 Note that the above grammar only defines the basic syntax requirements of the language. Finer-grained constraints are enforced by the compiler. For example, `Exp` can be expanded to a primitive call, but it is not allowed in most expressions. The left hand side of `Assign` can be expanded to a dictionary element access, but it is only allowed in assignment statements.
 
 TODO: reused TLA+ notations in prototype for literal values, operators and functions on them, expressions, and CTL formulas.
+
+TODO: allowing nondeterminism (`in`) in temporary value declaration statements.

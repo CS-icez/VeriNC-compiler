@@ -127,18 +127,15 @@ private:
         "self"
     };
 
-    vector<string> strPool;
-    vector<vector<string*>> vecStrPool;
-
     uset<string> names;
     uset<string> localNames;
     umap<string, uset<string>> type2localNames;
     // (name, exp)
-    vector<pair<string, string*>> configs;
+    vector<pair<string, string>> configs;
     // (name, exp)
-    vector<pair<string, string*>> invariants;
+    vector<pair<string, string>> invariants;
     // (name, exp)
-    vector<pair<string, string*>> properties;
+    vector<pair<string, string>> properties;
 
     uset<string> nodetypes;
     uset<string> nodes;
@@ -149,19 +146,19 @@ private:
     umap<string, umap<string, string>> nexts;
 
     // type -> (name, init)
-    umap<string, vector<tuple<string, string*>>> type2constDecls;
+    umap<string, vector<tuple<string, string>>> type2constDecls;
     // type -> (name, init)
-    umap<string, vector<tuple<string, string*>>> type2varDecls;
+    umap<string, vector<tuple<string, string>>> type2varDecls;
     umap<string, uset<string>> type2constNames;
     umap<string, uset<string>> type2varNames;
     // (name, params, exp)
-    vector<tuple<string, vector<string*>*, string*>> fns;
+    vector<tuple<string, vector<string>, string>> fns;
 
     struct LabelMeta {
         string name;
         vector<StmtAST*> stmts;
         vector<vector<LabelMeta>> branches;
-        vector<pair<string, ExpAST*>> temps;
+        vector<tuple<string, ExpAST*, bool>> temps;
         TriBool has_recv;
         TriBool has_sendlike;
     };
@@ -222,7 +219,7 @@ private:
     void analyzeReceiveCall(const string& type, string& name,
         vector<ExpAST*>& args, PathMeta& path);
     bool analyzeTempStmt(const string& type, vector<AssignAST*>& assigns,
-        vector<pair<string, ExpAST*>>& temps, PathMeta& path);
+        decltype(LabelMeta::temps)& temps, PathMeta& path);
 
     void completeNexts();
     string findNext(const string& src, const string& dst,
@@ -233,6 +230,7 @@ private:
     void addOurFns();
     void addOurProperties();
 
+    // TODO: do not modify in place; return a mangled version.
     void mangleTLA(const string& type, string& tla);
 
     string buildTLA();

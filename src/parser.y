@@ -61,13 +61,13 @@ void yyerror(SpecAST*&, const char* s);
 %token <p_string>
     CONFIGURATION TOPOLOGY PROTOCOL PROPERTY
     NODETYPE NODE LINK DoubleMinus ROUTE
-    VAR CONST FN THREAD TEMP
+    VAR CONST FN THREAD TEMP IN
     IF ELIF ELSE WHILE BREAK CONTINUE
 
 %type <p_Spec>       Spec
 %type <p_Section>    Section
 %type <p_Config>     Config
-%type <p_Assign>     Assign
+%type <p_Assign>     Assign SemiDecl
 %type <p_Topology>   Topology
 %type <p_Type>       Type
 %type <p_RouteEntry> RouteEntry
@@ -86,7 +86,7 @@ void yyerror(SpecAST*&, const char* s);
 %type <vec_Exp>        Exps OptExps
 %type <vec_Property>   Properties
 %type <vec_Type>       Types
-%type <vec_Assign>     Assigns
+%type <vec_Assign>     Assigns SemiDecls
 %type <vec_ident>      Idents
 %type <vv_ident>       Links
 
@@ -121,8 +121,9 @@ Config
     ;
 
 Assign
-    : IDENT '=' Exp { $$ = make_ast<AssignAST>($1, n1, $3); }
-    | IDENT '[' Exps ']' '=' Exp { $$ = make_ast<AssignAST>($1, $3, $6); }
+    : IDENT '=' Exp { $$ = make_ast<AssignAST>($1, n1, $3, false); }
+    | IDENT '[' Exps ']' '=' Exp { $$ = make_ast<AssignAST>($1, $3, $6, false); }
+    | IDENT IN Exp { $$ = make_ast<AssignAST>($1, n1, $3, true); }
     ;
 
 Topologies
@@ -132,7 +133,7 @@ Topologies
 
 Topology
     : NODETYPE Types ';' { $$ = make_ast<TopologyAST>(TopologyAST::NodeType, $2, n5); }
-    | NODE '(' Type ')' Idents ';' { $$ = make_ast<TopologyAST>(TopologyAST::Node, n1, $3, $5, n3); }
+    | NODE '(' Type ')' SemiDecls ';' { $$ = make_ast<TopologyAST>(TopologyAST::Node, n1, $3, $5, n3); }
     | LINK Links ';' { $$ = make_ast<TopologyAST>(TopologyAST::Link, n3, $2, n2); }
     | ROUTE '(' Idents ')' '{' RouteEntries '}' { $$ = make_ast<TopologyAST>(TopologyAST::Route, n4, $3, $6); }
     ;
@@ -149,6 +150,16 @@ Idents
 
 Type
     : IDENT { $$ = make_ast<TypeAST>($1); }
+    ;
+
+SemiDecls
+    : SemiDecls ',' SemiDecl { $1->push_back($3); $$ = $1; }
+    | SemiDecl { $$ = make_vec($1); }
+    ;
+
+SemiDecl
+    : IDENT '=' Exp { $$ = make_ast<AssignAST>($1, n1, $3, false); }
+    | IDENT { $$ = make_ast<AssignAST>($1, n2, false); }
     ;
 
 Links
