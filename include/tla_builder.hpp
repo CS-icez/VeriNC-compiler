@@ -1,18 +1,13 @@
 #pragma once
 #include "ast.hpp"
+#include <algorithm>
+#include <cassert>
 #include <iostream>
 #include <ranges>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
-using std::pair;
-using std::string;
-using std::tuple;
-using std::vector;
-template <typename K, typename V>
-using umap = std::unordered_map<K, V>;
-template <typename T>
-using uset = std::unordered_set<T>;
+#include "debug.hpp"
 
 struct TriBool {
     enum TriBoolValue { True, False, Both } value;
@@ -66,6 +61,110 @@ struct TriBool {
     }
 };
 
+template <typename R>
+concept StringRange = std::ranges::input_range<R>
+    && (std::same_as<std::ranges::range_value_t<R>, std::string*>
+        || std::same_as<std::ranges::range_value_t<R>, std::string>);
+
+template <StringRange R>
+string join(R&& range, const string& sep) {
+    using elem_t = std::ranges::range_value_t<R>;
+    string res;
+    bool is_first = true;
+    for (const auto& s : range) {
+        if (!is_first) {
+            res += sep;
+        }
+        is_first = false;
+        if constexpr (std::same_as<elem_t, std::string*>) {
+            res += *s;
+        } else {
+            res += s;
+        }
+    }
+    return res;
+}
+
+class exp_t {
+    using tla_t = const std::vector<std::string*>*;
+public:
+    exp_t(const std::string& _value) : value(_value) { }
+    exp_t(tla_t _value) : value(_value) { }
+
+    bool operator==(const string& s) const {
+        if (std::holds_alternative<std::string>(value)) {
+            return std::get<std::string>(value) == s;
+        } else {
+            const auto& vec = *std::get<tla_t>(value);
+            return vec.size() == 1 && *vec[0] == s;
+        }
+    }
+
+    std::string to_string() const {
+        if (std::holds_alternative<std::string>(value)) {
+            return std::get<std::string>(value);
+        }
+        const auto& vec = *std::get<tla_t>(value);
+        string res;
+        auto is_ident = [](const string& s) {
+            return s.size() > 0 && !std::isdigit(s[0])
+                && std::ranges::all_of(s, [](char c) {
+                    return std::isalnum(c) || c == '_';
+                });
+        };
+
+        for (size_t i = 0; i < vec.size(); ++i) {
+            const auto& curr = *vec[i];
+            const auto& prev = i > 0 ? *vec[i - 1] : "";
+            // Exception rules:
+            //   1. ident.field
+            //   2. (exp)
+            //   3. [exp]
+            //   4. {exp}
+            //   5. exp, exp
+            //   6. ~exp
+            //   7. ident[exp] or ident(exp)]
+            //   8. <= or >= or ==
+            //   9. :>
+            //  10. =>
+            //  11. [exp][exp]
+            bool add_space = (i > 0)
+                && prev != "." && curr != "."
+                && prev != "(" && curr != ")"
+                && prev != "[" && curr != "]"
+                && prev != "{" && curr != "}"
+                && curr != ","
+                && prev != "~"
+                && !(is_ident(prev) && (curr == "[" || curr == "("))
+                && !((prev == "<" || curr == ">" || prev == "=") && curr == "=")
+                && !(prev == ":" && curr == ">")
+                && !(prev == "=" && curr == ">")
+                && !(prev.ends_with("]") && curr == "[");
+            if (add_space) {
+                res += " ";
+            }
+            res += curr;
+        }
+        DEBUG_VAR(vec);
+        DEBUG_VAR(res);
+        return res;
+    }
+
+    static std::string to_string(const ExpAST& exp) {
+        assert(exp.rule == ExpAST::TLA
+            && "Internal error: calling exp_t::to_string on non-TLA expression");
+        return exp_t(exp.tla).to_string();
+    }
+
+    static std::string to_string(const vector<ExpAST*>& exps) {
+        auto f = [](const ExpAST* exp) { return to_string(*exp); };
+        return join(exps | std::views::transform(f), ", ");
+    }
+
+private:
+    std::variant<std::string, tla_t> value;
+};
+
 namespace std {
     template <>
     struct formatter<TriBool> {
@@ -86,6 +185,22 @@ namespace std {
 }
 
 class TLABuilder {
+    // `using std::pair` is not allowed in class scope,
+    // but use it in namespace scope of a header file
+    // will expose names to files that `include` it,
+    // which I try to avoid.
+    template <typename T1, typename T2>
+    using pair = std::pair<T1, T2>;
+    using string = std::basic_string<char>;
+    template <typename... Ts>
+    using tuple = std::tuple<Ts...>;
+    template <typename T>
+    using vector = std::vector<T>;
+    template <typename K, typename V>
+    using umap = std::unordered_map<K, V>;
+    template <typename T>
+    using uset = std::unordered_set<T>;
+
 public:
     TLABuilder(SpecAST* _spec, const string& _module_name) :
         spec(_spec), module_name(_module_name) { }
@@ -93,6 +208,7 @@ public:
 
     auto build() -> pair<string, string>;
     static string uncommentProperties(const string& program);
+
 private:
     SpecAST* spec;
     string module_name;
@@ -113,7 +229,8 @@ private:
         "assert", "begin", "call", "do", "either", "else",
         "elsif", "end", "goto", "if", "macro", "or",
         "print", "procedure", "process", "fair", "return", "skip",
-        "then", "variable", "variables", "while", "with"
+        "then", "variable", "variables", "while", "with",
+        "Done", "Error"
     };
     static inline const uset<string> our_reserved{
         "all", "null",
@@ -131,11 +248,11 @@ private:
     uset<string> localNames;
     umap<string, uset<string>> type2localNames;
     // (name, exp)
-    vector<pair<string, string>> configs;
+    vector<pair<string, exp_t>> configs;
     // (name, exp)
-    vector<pair<string, string>> invariants;
+    vector<pair<string, exp_t>> invariants;
     // (name, exp)
-    vector<pair<string, string>> properties;
+    vector<pair<string, exp_t>> properties;
 
     uset<string> nodetypes;
     uset<string> nodes;
@@ -146,19 +263,19 @@ private:
     umap<string, umap<string, string>> nexts;
 
     // type -> (name, init)
-    umap<string, vector<tuple<string, string>>> type2constDecls;
+    umap<string, vector<tuple<string, exp_t>>> type2constDecls;
     // type -> (name, init)
-    umap<string, vector<tuple<string, string>>> type2varDecls;
+    umap<string, vector<tuple<string, exp_t>>> type2varDecls;
     umap<string, uset<string>> type2constNames;
     umap<string, uset<string>> type2varNames;
     // (name, params, exp)
-    vector<tuple<string, vector<string>, string>> fns;
+    vector<tuple<string, vector<string>, exp_t>> fns;
 
     struct LabelMeta {
         string name;
         vector<StmtAST*> stmts;
         vector<vector<LabelMeta>> branches;
-        vector<tuple<string, ExpAST*, bool>> temps;
+        vector<tuple<string, exp_t, bool>> temps; // is_choice
         TriBool has_recv;
         TriBool has_sendlike;
     };
@@ -230,8 +347,7 @@ private:
     void addOurFns();
     void addOurProperties();
 
-    // TODO: do not modify in place; return a mangled version.
-    void mangleTLA(const string& type, string& tla);
+    void mangleTLA(const string& type, const vector<string*>& tla);
 
     string buildTLA();
     string buildCFG();
@@ -245,28 +361,4 @@ private:
         const string& end_label);
 
     string toUpper(const string& str);
-
-    template <typename T>
-    requires std::ranges::range<T>
-        && (std::same_as<typename T::value_type, std::string*>
-            || std::same_as<typename T::value_type, std::string>)
-    string join(const T& container, const string& sep) {
-        string res;
-        bool is_first = true;
-        for (const auto& s : container) {
-            if (!is_first) {
-                res += sep;
-            }
-            is_first = false;
-            if constexpr (std::same_as<typename T::value_type, std::string*>) {
-                res += *s;
-            } else {
-                res += s;
-            }
-        }
-        return res;
-    }
-
-    string exp2str(const ExpAST& exp);
-    vector<string> exps2strs(const vector<ExpAST*>& exps);
 };

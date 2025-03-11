@@ -37,7 +37,7 @@ $(LEX_GEN): $(LEX_SRCS) $(YACC_GEN)
 
 $(YACC_GEN): $(YACC_SRCS) $(INC_DIRS)/ast.hpp $(INC_DIRS)/make_ast.hpp
 	@mkdir -p $(dir $@)
-	bison --debug -d -o $@ $<
+	bison -Wcounterexamples --debug -d -o $@ $<
 
 $(OBJ_DIR)/scanner.o: $(LEX_GEN)
 	@mkdir -p $(dir $@)

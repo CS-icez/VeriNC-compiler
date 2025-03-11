@@ -12,9 +12,6 @@
 using std::cout;
 using std::endl;
 using std::format;
-using std::pair;
-using std::string;
-using std::vector;
 using namespace std::string_literals;
 namespace rg = std::ranges;
 
@@ -154,7 +151,7 @@ void TLABuilder::analyze(ConfigAST* config) {
         exp->rule == ExpAST::TLA,
         format("RHS of configuration {} should not involve primitive calls", name)
     );
-    configs.emplace_back(name, *exp->tla);
+    configs.emplace_back(name, exp->tla);
 }
 
 void TLABuilder::analyze(TopologyAST* topology) {
@@ -186,7 +183,7 @@ void TLABuilder::analyze(TopologyAST* topology) {
                         exp->rule == ExpAST::TLA,
                         format("The numeric value of node {} should not involve primitive calls", ident)
                     );
-                    configs.emplace_back(ident, exp2str(*exp));
+                    configs.emplace_back(ident, exp->tla);
                 } else {
                     configs.emplace_back(ident, ident);
                 }
@@ -314,7 +311,9 @@ string TLABuilder::findNext(const string& src, const string& dst,
 
 string TLABuilder::toUpper(const string& str) {
     auto res = str;
+    // Wait for `rg::to` in C++23.
     rg::transform(str, res.begin(),
+        // Here directly use &std::toupper will cause a compilation error.
         [](unsigned char c) { return std::toupper(c); });
     return res;
 }
@@ -566,9 +565,10 @@ void TLABuilder::analyze(ProtocolAST* protocol) {
                 format("RHS of function {} should not involve primitive calls", name)
             );
             vector<string> params;
+            // Wait for `rg::to` in C++23.
             rg::transform(*protocol->params, std::back_inserter(params),
                 [](const auto& s) { return *s; });
-            fns.emplace_back(name, std::move(params), *exp->tla);
+            fns.emplace_back(name, std::move(params), exp->tla);
             break;
         }
         case ProtocolAST::Thread:
@@ -611,14 +611,19 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
         format("RHS of {} declaration {} should not involve primitive calls", cv, name)
     );
     // Replace `self` with `__n`.
-    *exp->tla = std::regex_replace(*exp->tla, std::regex("self"), "__n");
+    // *exp->tla = std::regex_replace(*exp->tla, std::regex("self"), "__n");
+    rg::for_each(*exp->tla, [](const auto& s) {
+        if (*s == "self") {
+            *s = "__n";
+        }
+    });
     mangleTLA(type, *exp->tla);
 
     if (is_const) {
-        type2constDecls[type].emplace_back(name, *exp->tla);
+        type2constDecls[type].emplace_back(name, exp->tla);
         type2constNames[type].insert(name);
     } else {
-        type2varDecls[type].emplace_back(name, *exp->tla);
+        type2varDecls[type].emplace_back(name, exp->tla);
         type2varNames[type].insert(name);
     }
 }
@@ -1174,7 +1179,8 @@ void TLABuilder::analyzeReceiveCall([[maybe_unused]] const string& type, string&
         "`receive` should not have any arguments"
     );
     name = "__Receive";
-    args.push_back(make_ast<ExpAST>(ExpAST::TLA, n2, make_str("__Node(self)")));
+    auto tla = make_vec(make_str("__Node(self)"));
+    args.push_back(make_ast<ExpAST>(ExpAST::TLA, n2, tla));
     DEBUG("Exit {}", __func__);
 }
 
@@ -1200,6 +1206,7 @@ bool TLABuilder::analyzeTempStmt(const string& type, vector<AssignAST*>& assigns
         switch (exp->rule) {
             case ExpAST::TLA:
                 mangleTLA(type, *exp->tla);
+                temps.emplace_back(*assign->ident, exp->tla, assign->is_choice);
                 break;
             case ExpAST::PrimCall:
                 assert(!exp->fn_name->starts_with("__")
@@ -1212,78 +1219,58 @@ bool TLABuilder::analyzeTempStmt(const string& type, vector<AssignAST*>& assigns
                         *assign->ident
                     )
                 );
+                check(
+                    !assign->is_choice,
+                    format(
+                        "Nondeterminism is only allowed on sets, "
+                        "but receive() returns a packet (a dictionary)"
+                    )
+                );
                 analyzeReceiveCall(type, *exp->fn_name, *exp->args, path);
+                temps.emplace_back(*assign->ident, "__Receive(__Node(self))", false);
                 has_effect = true;
                 break;
             default:
                 assert(false && "Internal error: unknown expression type");
         }
-
-        temps.emplace_back(*assign->ident, exp, assign->is_choice);
     }
 
     DEBUG("Exit {}", __func__);
     return has_effect;
 }
 
-void TLABuilder::mangleTLA(const string& type, string& tla) {
-    string res;
-    size_t i = 0;
-
-    // Auxiliary functions.
-    auto is_ident_start = [](char c) {
-        return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || c == '_';
-    };
-    auto is_ident_char = [&is_ident_start](char c) {
-        return is_ident_start(c) || ('0' <= c && c <= '9');
-    };
-    auto get_ident = [&i, tla, &is_ident_char]() {
-        size_t start = i;
-        ++i;
-        while (i < tla.size() && is_ident_char(tla[i])) {
-            ++i;
-        }
-        return tla.substr(start, i - start);
+void TLABuilder::mangleTLA(const string& type, const vector<string*>& tla) {
+    auto is_ident = [](const string& s) {
+        return s.size() > 0 && !std::isdigit(s[0])
+            && std::ranges::all_of(s, [](char c) {
+                return std::isalnum(c) || c == '_';
+            });
     };
 
-    while (i < tla.size()) {
-        if (is_ident_start(tla[i])) {
-            auto start = i;
-            auto ident = get_ident();
-            if (localNames.contains(ident)) {
-                assert(type != all && "Internal error: local name in global context");
-                bool is_key = start > 0 && (
-                    tla[start - 1] == '.' || tla[start - 1] == '['
-                        || tla[start - 1] == '"'
-                        || (start > 1 && tla[start - 1] == ' ' && tla[start - 2] == ',')
-                );
-                check(
-                    // TODO: a real expression grammar.
-                    type2localNames[type].contains(ident) || is_key,
-                    format(
-                        "Identifier {} in expression {} "
-                        "cannot be accessed by node type {}",
-                        ident, tla, type
-                    )
-                );
-
-                res += ident + (is_key ? "" : "[__Node(self)]");
-            }
-            else {
-                // TODO: check if `ident` is undeclared.
-                if (ident == "self") {
-                    res += "__Node(self)";
-                } else {
-                    res += ident;
-                }
-            }
+    for (size_t i = 0; i < tla.size(); ++i) {
+        if (!is_ident(*tla[i])) {
+            continue;
         }
-        else {
-            res += tla[i];
-            ++i;
+        // Line 1070 of https://github.com/tlaplus/tlaplus/blob/master/tlatools/org.lamport.tlatools/src/pcal/PlusCal2.tla#L284
+        bool is_last = (i == tla.size() - 1);
+        bool is_first = (i == 0);
+        auto prefix = uset({"["s, ","s});
+        auto suffix = uset({":"s, "|->"s});
+        bool is_key = !is_first && ( *tla[i - 1] == "."
+            || (!is_last && prefix.contains(*tla[i - 1]) && suffix.contains(*tla[i + 1]))
+        );
+        if (is_key || !localNames.contains(*tla[i])) {
+            continue;
         }
+        check(
+            type2localNames[type].contains(*tla[i]),
+            format(
+                "Identifier {} cannot be accessed by node type {}",
+                *tla[i], type
+            )
+        );
+        *tla[i] += "[__Node(self)]";
     }
-    tla = res;
 }
 
 void TLABuilder::analyze(PropertyAST* property) {
@@ -1297,37 +1284,16 @@ void TLABuilder::analyze(PropertyAST* property) {
         format("RHS of property {} should not involve primitive calls", name)
     );
 
-    auto tla = exp->tla;
-    mangleTLA(all, *tla);
-    bool is_temporal = (tla->starts_with("[]") || tla->starts_with("<>"));
+    const auto& tla = *exp->tla;
+    mangleTLA(all, tla);
+    bool is_temporal = tla.size() > 2 && (
+        (*tla[0] == "<" && *tla[1] == ">") || (*tla[0] == "[" && *tla[1] == "]")
+    );
     if (is_temporal) {
-        properties.emplace_back(name, *tla);
+        properties.emplace_back(name, &tla);
     } else {
-        invariants.emplace_back(name, *tla);
+        invariants.emplace_back(name, &tla);
     }
-}
-
-string TLABuilder::exp2str(const ExpAST& exp) {
-    switch (exp.rule) {
-        case ExpAST::TLA:
-            return *exp.tla;
-        case ExpAST::PrimCall:
-            return format(
-                "{}({})",
-                *exp.fn_name,
-                join(exps2strs(*exp.args), ", ")
-            );
-        default:
-            assert(false && "Internal error: unknown expression type");
-    }
-}
-
-vector<string> TLABuilder::exps2strs(const vector<ExpAST*>& exps) {
-    vector<string> res;
-    res.reserve(exps.size());
-    rg::transform(exps, std::back_inserter(res),
-        [this](const ExpAST* exp) { return exp2str(*exp); });
-    return res;
 }
 
 string TLABuilder::buildTLA() {
@@ -1347,13 +1313,13 @@ string TLABuilder::buildTLA() {
 
     res += "  variables\n";
     for (const auto& [type, vec] : type2varDecls) {
-        for (const auto& [name, tla] : vec) {
+        for (const auto& [name, exp] : vec) {
             if (type == all) {
-                res += format("    {} = {};\n", name, tla);
+                res += format("    {} = {};\n", name, exp.to_string());
             } else {
                 res += format(
                     "    {} = [__n \\in {} |-> ({})];\n",
-                    name, toUpper(type) + "_SET", tla
+                    name, toUpper(type) + "_SET", exp.to_string()
                 );
             }
         }
@@ -1362,20 +1328,20 @@ string TLABuilder::buildTLA() {
 
     res += "  define {\n";
     for (const auto& [type, vec] : type2constDecls) {
-        for (const auto& [name, tla] : vec) {
+        for (const auto& [name, exp] : vec) {
             if (type == all) {
-                res += format("    {} == {}\n", name, tla);
+                res += format("    {} == {}\n", name, exp.to_string());
             } else {
                 res += format(
                     "    {} == [__n \\in {} |-> ({})]\n",
-                    name, toUpper(type) + "_SET", tla
+                    name, toUpper(type) + "_SET", exp.to_string()
                 );
             }
         }
     }
     res += "\n";
-    for (const auto& [name, params, tla] : fns) {
-        res += format("    {}({}) == {}\n", name, join(params, ", "), tla);
+    for (const auto& [name, params, exp] : fns) {
+        res += format("    {}({}) == {}\n", name, join(params, ", "), exp.to_string());
     }
     res += "  }\n\n\n";
 
@@ -1388,14 +1354,14 @@ string TLABuilder::buildTLA() {
     }
     res += "} *)\n\n";
 
-    for (const auto& [name, tla] : invariants) {
-        res += format("\\* {} == {}\n", name, tla);
+    for (const auto& [name, exp] : invariants) {
+        res += format("\\* {} == {}\n", name, exp.to_string());
     }
     if (!invariants.empty()) {
         res += "\n";
     }
-    for (const auto& [name, tla] : properties) {
-        res += format("\\* {} == {}\n", name, tla);
+    for (const auto& [name, exp] : properties) {
+        res += format("\\* {} == {}\n", name, exp.to_string());
     }
     if (!properties.empty()) {
         res += "\n";
@@ -1695,12 +1661,13 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
         spaces = string(indent, ' ');
     }
 
+    // Introduce a `with` block to declare temporary values.
     if (!label_meta.temps.empty()) {
         res += format("{}with (\n", spaces);
         for (const auto& [name, exp, is_choice] : label_meta.temps) {
             res += format(
                 "{}  {} {} {},\n",
-                spaces, name, is_choice ? "\\in" : "=", exp2str(*exp)
+                spaces, name, is_choice ? "\\in" : "=", exp.to_string()
             );
         }
         res += spaces + ") {\n";
@@ -1733,9 +1700,9 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
                         lhs += "[__Node(self)]";
                     }
                     if (assign->keys != nullptr) {
-                        lhs += format("[{}]", join(exps2strs(*assign->keys), ", "));
+                        lhs += format("[{}]", exp_t::to_string(*assign->keys));
                     }
-                    auto rhs = exp2str(*assign->exp);
+                    auto rhs = exp_t::to_string(*assign->exp);
                     assigns.push_back(format("{} := {}", lhs, rhs));
                 }
                 res += spaces + join(assigns, " || ") + ";\n";
@@ -1749,11 +1716,11 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
                 break;
             case StmtAST::PrimCall: {
                 auto name = *stmt->name;
-                auto args = exps2strs(*stmt->exps);
+                auto args = exp_t::to_string(*stmt->exps);
                 if (name == "__Receive") {
                     res += spaces + wait_net_buf;
                 }
-                res += format("{}{}({});\n", spaces, name, join(args, ", "));
+                res += format("{}{}({});\n", spaces, name, args);
                 if (label_meta.has_sendlike == false && name == "__Receive") {
                     res += format("{}__Drop();\n", spaces);
                 }
@@ -1769,13 +1736,16 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
                 break;
             }
             case StmtAST::If:
-                res += format("{}if ({}) {{\n", spaces, exp2str(*stmt->exp));
+                res += format("{}if ({}) {{\n", spaces, exp_t::to_string(*stmt->exp));
                 res += buildLabels(*branch_it++, indent + 2, end_label);
                 res += format("{}}};\n", spaces);
                 if (stmt->vec_elif_exp != nullptr) {
                     for (size_t i = 0; i < stmt->vec_elif_exp->size(); ++i) {
                         auto elif_exp = (*stmt->vec_elif_exp)[i];
-                        res += format("{}else if ({}) {{\n", spaces, exp2str(*elif_exp));
+                        res += format(
+                            "{}else if ({}) {{\n",
+                            spaces, exp_t::to_string(*elif_exp)
+                        );
                         res += buildLabels(*branch_it++, indent + 2, end_label);
                         res += format("{}}};\n", spaces);
                     }
@@ -1787,7 +1757,10 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
                 }
                 break;
             case StmtAST::While:
-                res += format("{}while({}) {{\n", spaces, exp2str(*stmt->exp));
+                res += format(
+                    "{}while({}) {{\n",
+                    spaces, exp_t::to_string(*stmt->exp)
+                );
                 res += format(
                     "{}  if (__active_threads[__Node(self)] <= 0) {{ goto {}; }};\n",
                     spaces, end_label
@@ -1809,6 +1782,7 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
 
     assert(branch_it == branch_end && "Internal error: branch iterator not at end");
 
+    // Close the `with` block.
     if (!label_meta.temps.empty()) {
         indent -= 2;
         spaces = string(indent, ' ');
@@ -1830,20 +1804,19 @@ string TLABuilder::buildCFG() {
     string res;
     res += "SPECIFICATION Spec\n";
     res += "CONSTANTS\n";
-    for (const auto& [name, tla] : configs) {
+    for (const auto& [name, exp] : configs) {
         DEBUG_VAR(name);
-        cout << "tla: " << tla << endl;
-        res += format("  {} = {}\n", name, tla);
+        res += format("  {} = {}\n", name, exp.to_string());
     }
     if (!invariants.empty()) {
         res += "INVARIANTS\n";
-        for (const auto& [name, tla] : invariants) {
+        for (const auto& [name, exp] : invariants) {
             res += format("  {}\n", name);
         }
     }
     if (!properties.empty()) {
         res += "PROPERTIES\n";
-        for (const auto& [name, tla] : properties) {
+        for (const auto& [name, exp] : properties) {
             res += format("  {}\n", name);
         }
     }

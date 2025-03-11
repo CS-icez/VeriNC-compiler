@@ -13,25 +13,22 @@ using namespace std;
 
 %}
 
-TLA           \$[^\$]*\$
+/* Four rules: */
+/*   1. Double-quoted string. Do not allow escaped double quote in string. */
+/*   2. Escaped operator (\alphas). */
+/*   3. Non-escaped operator (non-alnum chars). */
+/*   4. Integer. */
+/* Note that `\w` and `\d` are not supported in flex. */
+OTHER_TOKEN \"[^\"]*\"|\\[[:alpha:]]+|[^\"[:space:][:alnum:]_\(\)\[\]\{\},;=:]+|[[:digit:]]+
 
-WhiteSpace    [ \t\n\r]*
-LineComment   "//".*
-
-Identifier    [a-zA-Z_][a-zA-Z0-9_]*
+WhiteSpace  [ \t\n\r]+
+LineComment "//".*
+Identifier  [a-zA-Z_][a-zA-Z0-9_]*
 
 %%
 
-{TLA}           {
-    auto s = new string(yytext);
-    *s = s->substr(1, s->length() - 2);
-    yylval.p_string = s;
-    return TLA;
-}
-
 {WhiteSpace}    { }
 {LineComment}   { }
-
 
 "configuration" { return CONFIGURATION; }
 "topology"      { return TOPOLOGY; }
@@ -56,8 +53,18 @@ Identifier    [a-zA-Z_][a-zA-Z0-9_]*
 "break"         { return BREAK; }
 "continue"      { return CONTINUE; }
 
-{Identifier}    { yylval.p_string = new string(yytext); return IDENT; }
+"send"          { yylval.p_string = new string(yytext); return PRIMITIVE; }
+"unicast"       { yylval.p_string = new string(yytext); return PRIMITIVE; }
+"multicast"     { yylval.p_string = new string(yytext); return PRIMITIVE; }
+"receive"       { yylval.p_string = new string(yytext); return PRIMITIVE; }
+"wait"          { yylval.p_string = new string(yytext); return PRIMITIVE; }
+"exit"          { yylval.p_string = new string(yytext); return PRIMITIVE; }
+"assert"        { yylval.p_string = new string(yytext); return PRIMITIVE; }
+"print"         { yylval.p_string = new string(yytext); return PRIMITIVE; }
 
-.               { yylval.p_string = new string(yytext); return yytext[0]; }
+{Identifier}    { yylval.p_string = new string(yytext); return IDENT; }
+{OTHER_TOKEN}   { yylval.p_string = new string(yytext); return OTHER_TOKEN; }
+
+.               { return yytext[0]; }
 
 %%

@@ -26,9 +26,31 @@ namespace std {
             return format_to(out, "]");
         }
     };
+
+    template <typename T>
+    struct formatter<vector<T*>> {
+        constexpr auto parse(format_parse_context& ctx) {
+            return ctx.begin();
+        }
+        
+        auto format(const vector<T*>& vec, format_context& ctx) const {
+            auto out = ctx.out();
+            out = format_to(out, "[");
+            
+            bool first = true;
+            for (const auto& elem : vec) {
+                if (!first) {
+                    out = format_to(out, ", ");
+                }
+                out = format_to(out, "{}", *elem);
+                first = false;
+            }
+            return format_to(out, "]");
+        }
+    };
 }
     
-#if 1
+#if 0
 #define DEBUG(fmt, ...) \
     std::cout << std::format(fmt, ##__VA_ARGS__) << std::endl
 #define COLOR_VAR "\033[36m"
@@ -41,5 +63,5 @@ namespace std {
         << COLOR_RESET << std::endl;
 #else
 #define DEBUG(fmt, ...)
-#define DEBUGVAR(var)
+#define DEBUG_VAR(var)
 #endif

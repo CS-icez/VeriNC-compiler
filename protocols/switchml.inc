@@ -1,9 +1,9 @@
 configuration {
-    MAX_LOSS = $0$;
-    MAX_OUT_OF_ORDER = $0$;
-    TERMINATION_CHECK = $TRUE$;
-    AGG_SIZE = $1$;
-    REQ_NUM = $2$;
+    MAX_LOSS = 0;
+    MAX_OUT_OF_ORDER = 0;
+    TERMINATION_CHECK = TRUE;
+    AGG_SIZE = 1;
+    REQ_NUM = 2;
 }
 
 topology {
@@ -14,47 +14,47 @@ topology {
 }
 
 protocol {
-    const(all) REQ_SET = $0..(REQ_NUM - 1)$, AGG_SET = $0..(AGG_SIZE - 1)$;
-    const(all) req_val = $[c \in CLIENT_SET, i \in REQ_SET |-> RandomElement(0..100000)]$;
-    const(all) res = $[i \in REQ_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})]$;
-    var(all) active_clients = $CLIENT_SET$;
+    const(all) REQ_SET = 0..(REQ_NUM - 1), AGG_SET = 0..(AGG_SIZE - 1);
+    const(all) req_val = [c \in CLIENT_SET, i \in REQ_SET |-> RandomElement(0..100000)];
+    const(all) res = [i \in REQ_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})];
+    var(all) active_clients = CLIENT_SET;
 
-    var(Client) requests = $[i \in REQ_SET |-> [
+    var(Client) requests = [i \in REQ_SET |-> [
         wid |-> self,
         ver |-> (i \div AGG_SIZE) % 2,
         idx |-> i % AGG_SIZE,
         val |-> req_val[self, i],
         psn |-> i,
         dst |-> sw
-    ]]$;
-    var(Client) pending = ${}$;
+    ]];
+    var(Client) pending = {};
 
     var(Switch)
-        pool = $[i \in {0, 1}, j \in AGG_SET |-> 0]$,
-        count = $[i \in {0, 1}, j \in AGG_SET |-> 0]$,
-        seen = $[i \in {0, 1}, j \in AGG_SET, k \in CLIENT_SET |-> FALSE]$;
+        pool = [i \in {0, 1}, j \in AGG_SET |-> 0],
+        count = [i \in {0, 1}, j \in AGG_SET |-> 0],
+        seen = [i \in {0, 1}, j \in AGG_SET, k \in CLIENT_SET |-> FALSE];
 
-    fn MinElem(S) = $CHOOSE x \in S : \A y \in S : x <= y$;
-    fn Flip(b) = $IF b = 1 THEN 0 ELSE 1$;
+    fn MinElem(S) = CHOOSE x \in S : \A y \in S : x <= y;
+    fn Flip(b) = IF b = 1 THEN 0 ELSE 1;
 
     thread(Client) ClientSend {
     L_ClientSend:
-      unicast($[i \in AGG_SET |-> requests[i]]$);
-      pending = $AGG_SET$;
+      unicast([i \in AGG_SET |-> requests[i]]);
+      pending = AGG_SET;
     }
 
     thread(Client) ClientRecv {
     L_ClientRecv:
-        while ($TRUE$) {
+        while (TRUE) {
             temp pkt = receive();
-            assert($pkt.val = res[pkt.psn]$, $"ClientRecv: incorrect value"$);
-            if ($pkt.psn + AGG_SIZE < REQ_NUM$) {
-                send($requests[pkt.psn + AGG_SIZE]$);
-                pending = $(pending \ {pkt.psn}) \cup {pkt.psn + AGG_SIZE}$;
+            assert(pkt.val = res[pkt.psn], "ClientRecv: incorrect value");
+            if (pkt.psn + AGG_SIZE < REQ_NUM) {
+                send(requests[pkt.psn + AGG_SIZE]);
+                pending = (pending \ {pkt.psn}) \cup {pkt.psn + AGG_SIZE};
             } else {
-                pending = $pending \ {pkt.psn}$;
-                if ($pending = {}$) {
-                    active_clients = $active_clients \ {self}$;
+                pending = pending \ {pkt.psn};
+                if (pending = {}) {
+                    active_clients = active_clients \ {self};
                     exit();
                 }
             }
@@ -63,35 +63,35 @@ protocol {
 
     thread(Client) ClientRetx {
     L_ClientRetx:
-        while ($TRUE$) {
-            wait($pending # {}$);
-            temp i = $MinElem(pending)$;
-            wait($requests[i] \notin ToSet(__net_buf[sw])$);
-            send($requests[i]$);
+        while (TRUE) {
+            wait(pending # {});
+            temp i = MinElem(pending);
+            wait(requests[i] \notin ToSet(__net_buf[sw]));
+            send(requests[i]);
         }
     }
 
     thread(Switch) SwitchRecv {
     L_SwitchRecv:
-        while ($active_clients # {}$) {
+        while (active_clients # {}) {
             temp pkt = receive();
-            temp v = $pkt.ver$, i = $pkt.idx$, w = $pkt.wid$;
+            temp v = pkt.ver, i = pkt.idx, w = pkt.wid;
 
-            if ($~seen[v, i, w]$) {
-                seen[$v$, $i$, $w$] = $TRUE$, seen[$Flip(v)$, $i$, $w$] = $FALSE$;
-                count[$v$, $i$] = $IF count[v, i] + 1 = CLIENT_NUM THEN 0 ELSE count[v, i] + 1$;
-                if ($count[v, i] = 1 \/ CLIENT_NUM = 1$) {
-                    pool[$v$, $i$] = $pkt.val$;
+            if (~seen[v, i, w]) {
+                seen[v, i, w] = TRUE, seen[Flip(v), i, w] = FALSE;
+                count[v, i] = IF count[v, i] + 1 = CLIENT_NUM THEN 0 ELSE count[v, i] + 1;
+                if (count[v, i] = 1 \/ CLIENT_NUM = 1) {
+                    pool[v, i] = pkt.val;
                 } else {
-                    pool[$v$, $i$] = $pool[v, i] + pkt.val$;
+                    pool[v, i] = pool[v, i] + pkt.val;
                 }
-                if ($count[v, i] = 0$) {
-                    multicast($"val" :> pool[v, i] @@ pkt$, $CLIENT_SET$);
+                if (count[v, i] = 0) {
+                    multicast("val" :> pool[v, i] @@ pkt, CLIENT_SET);
                 }
             }
             else {
-                if ($count[v, i] = 0$) {
-                    send($"val" :> pool[v, i] @@ "dst" :> w @@ pkt$);
+                if (count[v, i] = 0) {
+                    send("val" :> pool[v, i] @@ "dst" :> w @@ pkt);
                 }
             }
         }

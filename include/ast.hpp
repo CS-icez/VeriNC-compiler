@@ -202,9 +202,9 @@ struct ExpAST {
     enum Rule { PrimCall, TLA } rule;
     string* fn_name;
     vector<ExpAST*>* args;
-    string* tla;
+    vector<string*>* tla;
 
-    ExpAST(Rule _rule, string* _fn_name, vector<ExpAST*>* _args, string* _tla) :
+    ExpAST(Rule _rule, string* _fn_name, vector<ExpAST*>* _args, vector<string*>* _tla) :
         rule(_rule), fn_name(_fn_name), args(_args), tla(_tla) { }
 
     ~ExpAST() {

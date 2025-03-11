@@ -36,6 +36,11 @@ T* make_ast(Args&&... args) {
 // std::vector<T*>* make_vec(Args... args);
 
 template <typename T>
+std::vector<T*>* make_vec(T* arg1, T* arg2) {
+    return new std::vector<T*>{arg1, arg2};
+}
+
+template <typename T>
 std::vector<T*>* make_vec(T* arg) {
     return new std::vector<T*>{arg};
 }

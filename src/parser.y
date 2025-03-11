@@ -57,12 +57,13 @@ void yyerror(SpecAST*&, const char* s);
     PA_VE_VVS* pa_vE_vvS;
 }
 
-%token <p_string> IDENT TLA
+%token <p_string> IDENT OTHER_TOKEN
 %token <p_string>
     CONFIGURATION TOPOLOGY PROTOCOL PROPERTY
     NODETYPE NODE LINK DoubleMinus ROUTE
     VAR CONST FN THREAD TEMP IN
     IF ELIF ELSE WHILE BREAK CONTINUE
+    PRIMITIVE
 
 %type <p_Spec>       Spec
 %type <p_Section>    Section
@@ -87,12 +88,14 @@ void yyerror(SpecAST*&, const char* s);
 %type <vec_Property>   Properties
 %type <vec_Type>       Types
 %type <vec_Assign>     Assigns SemiDecls
-%type <vec_ident>      Idents
+%type <vec_ident>      Idents Tla
 %type <vv_ident>       Links
 
 %type <pa_vE_vvS> OptElifs Elifs
 %type <pa_E_vS>   Elif
 %type <vec_Stmt>  OptElse
+
+%type <vec_ident> ExpTokensNoComma ExpTokensComma ExpTokenNoComma ExpTokenComma
 
 %%
 
@@ -196,7 +199,7 @@ Stmt
     : IDENT ':' { $$ = make_ast<StmtAST>(StmtAST::Breakpoint, $1, n7); }
     | Assigns ';' { $$ = make_ast<StmtAST>(StmtAST::Assign, n2, $1, n5); }
     | ';' { $$ = make_ast<StmtAST>(StmtAST::Null, n8); }
-    | IDENT '(' OptExps ')' ';' { $$ = make_ast<StmtAST>(StmtAST::PrimCall, $1, $3, n6); }
+    | PRIMITIVE '(' OptExps ')' ';' { $$ = make_ast<StmtAST>(StmtAST::PrimCall, $1, $3, n6); }
     | TEMP Assigns ';' { $$ = make_ast<StmtAST>(StmtAST::Temp, n2, $2, n5); }
     | IF '(' Exp ')' '{' Stmts '}' OptElifs OptElse {
         if ($8 != nullptr) {
@@ -254,8 +257,68 @@ Exps
     ;
 
 Exp
-    : IDENT '(' OptExps ')' { $$ = make_ast<ExpAST>(ExpAST::PrimCall, $1, $3, n1); }
-    | TLA { $$ = make_ast<ExpAST>(ExpAST::TLA, n2, $1); }
+    : PRIMITIVE '(' OptExps ')' { $$ = make_ast<ExpAST>(ExpAST::PrimCall, $1, $3, n1); }
+    | Tla { $$ = make_ast<ExpAST>(ExpAST::TLA, n2, $1); }
+    ;
+
+Tla
+    : ExpTokensNoComma { $$ = $1; }
+    /* | QUANTIFIER ExpTokensComma ':' ExpTokensNoComma {
+        $1->insert($1->begin(), $2->begin(), $2->end());
+        $1->push_back(make_str(":"));
+        $1->insert($1->end(), $4->begin(), $4->end());
+        delete $2;
+        delete $4;
+        $$ = $1;
+    } */
+    ;
+
+/* Wait for `vector::insert` in C++23. */
+ExpTokensNoComma
+    : ExpTokensNoComma ExpTokenNoComma {
+        $1->insert($1->end(), $2->begin(), $2->end());
+        delete $2;
+        $$ = $1;
+    }
+    | ExpTokenNoComma { $$ = $1; }
+    ;
+
+ExpTokenNoComma
+    : '(' ExpTokensComma ')' {
+        $2->insert($2->begin(), make_str("("));
+        $2->push_back(make_str(")"));
+        $$ = $2;
+    }
+    | '[' ExpTokensComma ']' {
+        $2->insert($2->begin(), make_str("["));
+        $2->push_back(make_str("]"));
+        $$ = $2;
+    }
+    | '{' ExpTokensComma '}' {
+        $2->insert($2->begin(), make_str("{"));
+        $2->push_back(make_str("}"));
+        $$ = $2;
+    }
+    | '{' '}' { $$ = make_vec(make_str("{"), make_str("}")); }
+    | IDENT { $$ = make_vec($1); }
+    | OTHER_TOKEN { $$ = make_vec($1); }
+    /* | QUANTIFIER { $$ = make_vec($1); } */
+    | '=' { $$ = make_vec(make_str("=")); }
+    | ':' { $$ = make_vec(make_str(":")); }
+    ;
+
+ExpTokensComma
+    : ExpTokensComma ExpTokenComma {
+        $1->insert($1->end(), $2->begin(), $2->end());
+        delete $2;
+        $$ = $1;
+    }
+    | ExpTokenComma { $$ = $1; }
+    ;
+
+ExpTokenComma
+    : ExpTokenNoComma { $$ = $1; }
+    | ',' { $$ = make_vec(make_str(",")); }
     ;
 
 Properties
