@@ -50,18 +50,18 @@ namespace std {
     };
 }
     
-#if 0
+#if 1
 #define DEBUG(fmt, ...) \
     std::cout << std::format(fmt, ##__VA_ARGS__) << std::endl
 #define COLOR_VAR "\033[36m"
 #define COLOR_RESET "\033[0m"
 
-#define DEBUG_VAR(var) \
+#define DEBUG_EXP(var) \
     std::cout \
         << COLOR_VAR \
         << std::format("[{}:{}] {} = {}", __FILE__, __LINE__, #var, (var)) \
         << COLOR_RESET << std::endl;
 #else
 #define DEBUG(fmt, ...)
-#define DEBUG_VAR(var)
+#define DEBUG_EXP(var)
 #endif

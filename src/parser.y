@@ -299,6 +299,7 @@ ExpTokenNoComma
         $2->push_back(make_str("}"));
         $$ = $2;
     }
+    | '[' ']' { $$ = make_vec(make_str("["), make_str("]")); }
     | '{' '}' { $$ = make_vec(make_str("{"), make_str("}")); }
     | IDENT { $$ = make_vec($1); }
     | OTHER_TOKEN { $$ = make_vec($1); }

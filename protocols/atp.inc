@@ -21,7 +21,7 @@ protocol {
     var(all) active_clients = CLIENT_SET;
     var(all) max_jobs = MAX_JOBS;
 
-    var(Client) requests = [i \in REQ_SET |-> [
+    const(Client) requests = [i \in REQ_SET |-> [
         value |-> req_val[self, i],
         psn |-> i,
         bitmap |-> 2 ^ self,
@@ -49,8 +49,8 @@ protocol {
 
     fn MinElem(S) = CHOOSE x \in S : \A y \in S : x <= y;
 
-    thread(Client) ClientSend {
-    L_ClientSend:
+    thread(Client) ClientInitSend {
+    L_ClientInitSend:
         unicast(requests);
     }
 

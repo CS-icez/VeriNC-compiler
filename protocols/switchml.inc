@@ -19,7 +19,7 @@ protocol {
     const(all) res = [i \in REQ_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})];
     var(all) active_clients = CLIENT_SET;
 
-    var(Client) requests = [i \in REQ_SET |-> [
+    const(Client) requests = [i \in REQ_SET |-> [
         wid |-> self,
         ver |-> (i \div AGG_SIZE) % 2,
         idx |-> i % AGG_SIZE,
@@ -37,8 +37,8 @@ protocol {
     fn MinElem(S) = CHOOSE x \in S : \A y \in S : x <= y;
     fn Flip(b) = IF b = 1 THEN 0 ELSE 1;
 
-    thread(Client) ClientSend {
-    L_ClientSend:
+    thread(Client) ClientInitSend {
+    L_ClientInitSend:
       unicast([i \in AGG_SET |-> requests[i]]);
       pending = AGG_SET;
     }

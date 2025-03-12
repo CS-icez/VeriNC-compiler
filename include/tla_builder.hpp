@@ -101,9 +101,13 @@ public:
     }
 
     std::string to_string() const {
+        DEBUG("Enter {}", __func__);
         if (std::holds_alternative<std::string>(value)) {
+            DEBUG("{}: is string", __func__);
+            DEBUG("Exit {}", __func__);
             return std::get<std::string>(value);
         }
+        DEBUG("{}: is TLA", __func__);
         const auto& vec = *std::get<tla_t>(value);
         string res;
         auto is_ident = [](const string& s) {
@@ -114,8 +118,12 @@ public:
         };
 
         for (size_t i = 0; i < vec.size(); ++i) {
+            DEBUG_EXP(i);
             const auto& curr = *vec[i];
+            DEBUG_EXP(curr);
             const auto& prev = i > 0 ? *vec[i - 1] : "";
+            DEBUG_EXP(prev);
+            const auto& next = i + 1 == vec.size() ? "" : *vec[i + 1];
             // Exception rules:
             //   1. ident.field
             //   2. (exp)
@@ -123,7 +131,7 @@ public:
             //   4. {exp}
             //   5. exp, exp
             //   6. ~exp
-            //   7. ident[exp] or ident(exp)]
+            //   7. ident[exp] or ident(exp)
             //   8. <= or >= or ==
             //   9. :>
             //  10. =>
@@ -135,18 +143,19 @@ public:
                 && prev != "{" && curr != "}"
                 && curr != ","
                 && prev != "~"
-                && !(is_ident(prev) && (curr == "[" || curr == "("))
-                && !((prev == "<" || curr == ">" || prev == "=") && curr == "=")
+                && !(is_ident(prev) && (curr == "[" || curr == "(") && next != "]")
+                && !((prev == "<" || prev == ">" || prev == "=") && curr == "=")
                 && !(prev == ":" && curr == ">")
                 && !(prev == "=" && curr == ">")
-                && !(prev.ends_with("]") && curr == "[");
+                && !(prev.ends_with("]") && curr == "[" && next != "]");
             if (add_space) {
                 res += " ";
             }
             res += curr;
         }
-        DEBUG_VAR(vec);
-        DEBUG_VAR(res);
+        DEBUG_EXP(vec);
+        DEBUG_EXP(res);
+        DEBUG("Exit {}", __func__);
         return res;
     }
 
@@ -263,9 +272,9 @@ private:
     umap<string, umap<string, string>> nexts;
 
     // type -> (name, init)
-    umap<string, vector<tuple<string, exp_t>>> type2constDecls;
+    umap<string, vector<pair<string, exp_t>>> type2constDecls;
     // type -> (name, init)
-    umap<string, vector<tuple<string, exp_t>>> type2varDecls;
+    umap<string, vector<pair<string, exp_t>>> type2varDecls;
     umap<string, uset<string>> type2constNames;
     umap<string, uset<string>> type2varNames;
     // (name, params, exp)

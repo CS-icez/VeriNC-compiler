@@ -333,26 +333,27 @@ void TLABuilder::addOurConstants() {
     );
 
     string t = null;
+    std::remove_reference_t<decltype(type2constDecls[all])> vec;
 
     for (const auto& type : nodetypes) {
         // `TYPE_SET = {node1, node2, ...}`
         auto type_set = toUpper(type) + "_SET";
         addNewName(type_set, false);
         t = "{"s + join(type2nodes[type], ", ") + "}";
-        type2constDecls[all].emplace_back(type_set, t);
+        vec.emplace_back(type_set, t);
 
         // `TYPE_NUM = Cardinality(TYPE_SET)`
         auto type_num = toUpper(type) + "_NUM";
         addNewName(type_num, false);
         t = format("Cardinality({})", type_set);
-        type2constDecls[all].emplace_back(type_num, t);
+        vec.emplace_back(type_num, t);
     }
 
     // `NODE_SET = {node1, node2, ...}`
     auto node_set = "NODE_SET";
     addNewName(node_set, false);
     t = string("{") + join(nodes_in_order, ", ") + "}";
-    type2constDecls[all].emplace_back(node_set, t);
+    vec.emplace_back(node_set, t);
 
     // `MAX_LOSS = 0`
     auto max_loss = "MAX_LOSS";
@@ -375,7 +376,7 @@ void TLABuilder::addOurConstants() {
     for (const auto& src : nodes_in_order) {
         link_entries.push_back(format("{} :> {{{}}}", src, join(links[src], ", ")));
     }
-    type2constDecls[all].emplace_back("__links", join(link_entries, " @@ "));
+    vec.emplace_back("__links", join(link_entries, " @@ "));
 
     // `__next_hop = <<src1, dst1>> :> next1 @@ ...`
     t = "\n          ";
@@ -392,9 +393,12 @@ void TLABuilder::addOurConstants() {
             ++cnt;
         }
     }
-    type2constDecls[all].emplace_back("__next_hop", t);
+    vec.emplace_back("__next_hop", t);
 
     // TODO: symmetry.
+
+    // Wait for `vector::insert_range` in C++23.
+    type2constDecls[all].insert(type2constDecls[all].begin(), vec.begin(), vec.end());
 }
 
 void TLABuilder::addOurVariables() {
@@ -753,7 +757,7 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
 TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST& stmt,
     PathMeta path, LabelMeta& label_meta) {
     assert(stmt.rule == StmtAST::If && "Internal error: not an if statement");
-    DEBUG_VAR(path.has_recv);
+    DEBUG_EXP(path.has_recv);
 
     check(
         stmt.exp->rule == ExpAST::TLA,
@@ -798,9 +802,9 @@ TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST& stmt
         res_path |= path;
     }
 
-    DEBUG_VAR(path.has_recv);
-    DEBUG_VAR(path.has_sendlike);
-    DEBUG_VAR(branch_has_sendlike);
+    DEBUG_EXP(path.has_recv);
+    DEBUG_EXP(path.has_sendlike);
+    DEBUG_EXP(branch_has_sendlike);
     assert((path.has_recv != true || !path.has_sendlike.is_both())
         && "Internal error: such condition should have been recursively fixed");
     bool cond = path.has_recv == true && path.has_sendlike == false
@@ -815,7 +819,7 @@ TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST& stmt
         }
         auto branch_num = branch_has_sendlike.size();
         for (size_t i = 0; i < branch_num; ++i) {
-            DEBUG_VAR(branch_has_sendlike);
+            DEBUG_EXP(branch_has_sendlike);
             assert(!branch_has_sendlike[i].is_both()
                 && "Internal error: such condition should have been recursively fixed");
             auto& branch_labels = label_meta.branches[label_meta.branches.size() - branch_num + i];
@@ -858,8 +862,8 @@ TLABuilder::PathMeta TLABuilder::analyzeWhileStmt(const string& type, StmtAST& s
 auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
     PathMeta path, bool has_temp) -> pair<PathMeta, vector<LabelMeta>> {
     DEBUG("Enter {}", __func__);
-    DEBUG_VAR(path.has_recv);
-    DEBUG_VAR(path.has_sendlike);
+    DEBUG_EXP(path.has_recv);
+    DEBUG_EXP(path.has_sendlike);
     LabelMeta label;
     vector<LabelMeta> labels;
     const string first = "__first_label";
@@ -990,7 +994,7 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
     }
 
     collect_last_label();
-    DEBUG_VAR(path.has_sendlike);
+    DEBUG_EXP(path.has_sendlike);
     DEBUG("Exit {}", __func__);
     return {path, labels};
 }
@@ -998,7 +1002,7 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
 void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assigns,
     PathMeta& path) {
     DEBUG("Enter {}", __func__);
-    DEBUG_VAR(path.has_recv);
+    DEBUG_EXP(path.has_recv);
     assert(!assigns.empty() && "Ill-formed AST: empty assignment list");
 
     // Check that elements of `assigns` have the same `ident` field.
@@ -1049,7 +1053,7 @@ void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assig
                 assert(false && "Internal error: unknown expression type");
         }
     }
-    DEBUG_VAR(path.has_recv);
+    DEBUG_EXP(path.has_recv);
     DEBUG("Exit {}", __func__);
 }
 
@@ -1303,11 +1307,15 @@ string TLABuilder::buildTLA() {
     res += "EXTENDS Integers, Sequences, FiniteSets, "
         "TLC, Bitwise, FiniteSetsExt, SequencesExt, Functions\n\n";
 
+    DEBUG("{}: finish module header", __func__);
+
     res += "CONSTANTS\n";
     for (const auto& [name, tla] : configs) {
         res += format("  {},\n", name);
     }
     res[res.length() - 2] = '\n';
+
+    DEBUG("{}: finish constants", __func__);
 
     res += "(* --fair algorithm main {\n";
 
@@ -1326,17 +1334,23 @@ string TLABuilder::buildTLA() {
     }
     res += "\n";
 
+    DEBUG("{}: finish variables", __func__);
+
     res += "  define {\n";
+
+    for (const auto& [name, exp] : type2constDecls[all]) {
+        res += format("    {} == {}\n", name, exp.to_string());
+    }
+
     for (const auto& [type, vec] : type2constDecls) {
+        if (type == all) {
+            continue;
+        }
         for (const auto& [name, exp] : vec) {
-            if (type == all) {
-                res += format("    {} == {}\n", name, exp.to_string());
-            } else {
-                res += format(
-                    "    {} == [__n \\in {} |-> ({})]\n",
-                    name, toUpper(type) + "_SET", exp.to_string()
-                );
-            }
+            res += format(
+                "    {} == [__n \\in {} |-> ({})]\n",
+                name, toUpper(type) + "_SET", exp.to_string()
+            );
         }
     }
     res += "\n";
@@ -1345,8 +1359,12 @@ string TLABuilder::buildTLA() {
     }
     res += "  }\n\n\n";
 
+    DEBUG("{}: finish define block", __func__);
+
     res += buildMacros();
     res += "\n";
+
+    DEBUG("{}: finish macros", __func__);
 
     for (const auto& [type, name, labels] : threads) {
         res += "\n";
@@ -1610,7 +1628,7 @@ string TLABuilder::buildMacros() {
 string TLABuilder::buildProcess(const string& type, const string& name,
     const vector<LabelMeta>& label_metas) {
     DEBUG("Enter {}", __func__);
-    DEBUG_VAR(name);
+    DEBUG_EXP(name);
     string res;
     res += format(
         R"!!(  fair+ process ({} \in ({} \X {{"{}"}})) {{)!!" "\n",
@@ -1639,7 +1657,7 @@ string TLABuilder::buildLabels(const vector<LabelMeta>& label_metas, int indent,
 string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
     const string& end_label) {
     DEBUG("Enter {}", __func__);
-    DEBUG_VAR(label_meta.name);
+    DEBUG_EXP(label_meta.name);
     assert(indent >= 4 && "Internal error: invalid indentation number");
 
     auto spaces = string(indent, ' ');
@@ -1805,7 +1823,7 @@ string TLABuilder::buildCFG() {
     res += "SPECIFICATION Spec\n";
     res += "CONSTANTS\n";
     for (const auto& [name, exp] : configs) {
-        DEBUG_VAR(name);
+        DEBUG_EXP(name);
         res += format("  {} = {}\n", name, exp.to_string());
     }
     if (!invariants.empty()) {
