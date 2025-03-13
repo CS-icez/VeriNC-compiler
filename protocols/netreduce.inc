@@ -85,16 +85,16 @@ protocol {
 
     thread(Client) ClientRetx {
     L_ClientRetx:
-        while (active_clients # {}) {
+        while (\E c \in CLIENT_SET : ~__NodeTerminated(c)) {
             temp range = base..(Minor(base + WINDOW_SIZE, PSN_NUM) - 1);
-            wait(\A i \in range : requests[i] \notin ToSet(__net_buf[sw]));
+            wait(\A i \in range : ~Contains(__net_buf[sw], requests[i]));
             unicast([i \in ResendRange(base, base) |-> requests[i]]);
         }
     }
 
     thread(Switch) SwitchRecv {
     L_SwitchRecv:
-        while (active_clients # {}) {
+        while (\E c \in CLIENT_SET : ~__NodeTerminated(c)) {
             temp pkt = receive();
             // wait(\A i \in active_clients : __net_buf[i] = <<>>);
             if (pkt.type = NACK) {

@@ -18,7 +18,6 @@ protocol {
     const(all) REQ_SET = 1..REQ_NUM;
     const(all) req_val = [c \in CLIENT_SET, i \in REQ_SET |-> RandomElement(0..100000)];
     const(all) res = [i \in REQ_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})];
-    var(all) active_clients = CLIENT_SET;
     var(all) max_jobs = MAX_JOBS;
 
     const(Client) requests = [i \in REQ_SET |-> [
@@ -67,7 +66,6 @@ protocol {
             if (epsn <= REQ_NUM) {
                 send("resend" :> TRUE @@ requests[epsn]);
             } else {
-                active_clients = active_clients \ {self};
                 exit();
             }
         }
@@ -76,14 +74,14 @@ protocol {
     thread(Client) ClientRetx {
     L_ClientRetx:
         while (epsn <= REQ_NUM) {
-            wait(\E i \in REQ_SET : requests[i] \notin ToSet(__net_buf[sw]));
+            wait(\E i \in REQ_SET : ~Contains(__net_buf[sw], requests[i]));
             send("resend" :> TRUE @@ requests[epsn]);
         }
     }
     
     thread(Switch) SwitchRecv {
     L_SwitchRecv:
-        while (active_clients # {}) {
+        while (\E c \in CLIENT_SET : ~__NodeTerminated(c)) {
             temp pkt = receive();
             if (pkt.isAck) {
                 if (psn_id[pkt.psn] = pkt.psn) {
@@ -141,7 +139,7 @@ protocol {
 
     thread(PS) PSRecv {
     L_PSRecv:
-        while (active_clients # {}) {
+        while (\E c \in CLIENT_SET : ~__NodeTerminated(c)) {
             temp pkt = receive();
             assert(~pkt.isAck, "PSRecv: precondition failed");
             if (ps_bitmap[pkt.psn] & pkt.bitmap = 0) {
@@ -157,7 +155,7 @@ protocol {
 }
 
 property {
-    NoMemoryLeak = active_clients = {}
+    NoMemoryLeak = (\A c \in CLIENT_SET : __NodeTerminated(c))
         => (\A s \in SWITCH_SET, i \in REQ_SET : psn_id[s][i] \in {null, UNKNOWN});
 
     SlotClear = (\A s \in SWITCH_SET, i \in REQ_SET : 

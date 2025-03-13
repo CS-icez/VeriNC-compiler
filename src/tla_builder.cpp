@@ -126,7 +126,7 @@ void TLABuilder::analyze(SpecAST* spec) {
         );
         vec_exp.push_back(std::move(s));
     }
-    type2varDecls[all].emplace_back("__active_threads", join(vec_exp, " @@ "));
+    type2varDecls[all].emplace_back("__active_threads", join(vec_exp, " @@ "), false);
 }
 
 void TLABuilder::analyze(ConfigAST* config) {
@@ -215,6 +215,7 @@ void TLABuilder::analyze(TopologyAST* topology) {
                         check(*src != *dst, format("Declare a self-link of {}", *src));
                         links[*src].insert(*dst);
                         links[*dst].insert(*src);
+                        // Neighbors are naturally next hops.
                         nexts[*src][*dst] = *dst;
                         nexts[*dst][*src] = *src;
                     }
@@ -405,14 +406,28 @@ void TLABuilder::addOurVariables() {
     // `__net_buf = [__n \in NODE_SET |-> <<>>]`
     type2varDecls[all].emplace_back(
         "__net_buf",
-        R"!!([__n \in NODE_SET |-> <<>>])!!"
+        R"!!([__n \in NODE_SET |-> <<>>])!!",
+        false
     );
 
     // `__max_loss = MAX_LOSS`
-    type2varDecls[all].emplace_back("__max_loss", "MAX_LOSS");
+    type2varDecls[all].emplace_back("__max_loss", "MAX_LOSS", false);
 
     // `__max_out_of_order = MAX_OUT_OF_ORDER`
-    type2varDecls[all].emplace_back("__max_out_of_order", "MAX_OUT_OF_ORDER");
+    type2varDecls[all].emplace_back("__max_out_of_order", "MAX_OUT_OF_ORDER", false);
+
+    // __flying = {}
+    // __num = 0
+    // __reads = {}
+    // __values = {0}
+    // TODO: assumptions.
+    if (auto proj = &decltype(configs)::value_type::first;
+        rg::find(configs, "CHECK_CACHE_CONSISTENCY", proj) != configs.end()) {
+        type2varDecls[all].emplace_back("__flying", "{}", false);
+        type2varDecls[all].emplace_back("__num", "0", false);
+        type2varDecls[all].emplace_back("__reads", "{}", false);
+        type2varDecls[all].emplace_back("__values", "{0}", false);
+    }
 }
 
 void TLABuilder::addOurFns() {
@@ -521,6 +536,13 @@ void TLABuilder::addOurFns() {
         vector<string>{"__S"},
         "{__seq \\in [1..Cardinality(__S) -> __S] : IsInjective(__seq)}"
     );
+
+    // `__NodeTerminated(n) == __active_threads[n] <= 0`
+    fns.emplace_back(
+        "__NodeTerminated",
+        vector<string>{"__n"},
+        "__active_threads[__n] <= 0"
+    );
 }
 
 void TLABuilder::addOurProperties() {
@@ -575,8 +597,11 @@ void TLABuilder::analyze(ProtocolAST* protocol) {
             fns.emplace_back(name, std::move(params), exp->tla);
             break;
         }
+        // case ProtocolAST::Macro:
+        //     analyzeMacro(*protocol->name, *protocol->params, *protocol->stmts);
+        //     break;
         case ProtocolAST::Thread:
-            assert(protocol->stmts != nullptr&& "Internal error: thread should have statements");
+            assert(protocol->stmts != nullptr && "Internal error: thread should have statements");
             analyzeThread(*protocol->type->ident, *protocol->name, *protocol->stmts);
             break;
         default:
@@ -605,10 +630,6 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
         assign->keys == nullptr,
         format("LHS of {} declaration should be an identifier", cv)
     );
-    check(
-        !assign->is_choice,
-        format("{} declaration should not involve nondeterminism", cv)
-    );
     auto exp = assign->exp;
     check(
         exp->rule == ExpAST::TLA,
@@ -621,14 +642,18 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
             *s = "__n";
         }
     });
-    mangleTLA(type, *exp->tla);
+    mangleTLA(type, *exp->tla, true);
 
     if (is_const) {
-        type2constDecls[type].emplace_back(name, exp->tla);
         type2constNames[type].insert(name);
     } else {
-        type2varDecls[type].emplace_back(name, exp->tla);
         type2varNames[type].insert(name);
+    }
+
+    if (is_const && !assign->is_choice) {
+        type2constDecls[type].emplace_back(name, exp->tla);
+    } else {
+        type2varDecls[type].emplace_back(name, exp->tla, assign->is_choice);
     }
 }
 
@@ -640,6 +665,21 @@ void TLABuilder::analyzeThread(const string& type, const string& name,
         format("Declare thread of unknown node type {}", type)
     );
     addNewName(name);
+
+    // Add a mandatory constraint for retx. Recognition is based on thread name.
+    if (toUpper(name).ends_with("RETX")) {
+        check(
+            stmts.size() >= 2 && stmts[0]->rule == StmtAST::Breakpoint
+                && stmts[1]->rule == StmtAST::While,
+            format("Retransmission thread {} should start with a breakpoint followed by a while loop", name)
+        );
+        auto tla = make_vec(make_str("__net_buf[__Node(self)] = <<>>"));
+        auto exp = make_ast<ExpAST>(ExpAST::TLA, n2, tla);
+        auto exps = make_vec(exp);
+        auto wait_stmt = make_ast<StmtAST>(StmtAST::PrimCall, make_str("wait"), exps, n6);
+        auto while_branch = stmts[1]->stmts;
+        while_branch->insert(while_branch->begin(), wait_stmt);
+    }
 
     threads.emplace_back(type, name, analyzeThreadStmts(type, stmts));
     // analyzeThreadStmts(type, stmts);
@@ -665,17 +705,23 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
             !label.stmts.empty(),
             format("No statement follows label {}", label.name)
         );
-        check(
-            (path.has_recv == true && path.has_sendlike == true)
-            || path.has_recv == false
-            || path.has_sendlike == false,
-            "The following patterns are not allowed. "
-            "This is a limitation of the current implementation. "
-            "(1) `if (cond) { receive(); } send(pkt);` "
-            "(2) receive(); if (cond) { send(); } "
-            "(3) if (cond1) { receive(); } if (cond2) { send(); } "
-            "Try redesigning execution logic or setting a breakpoint."
-        );
+        // Note that
+        //   `if (cond) {} else { receive(); send(pkt); }`
+        // is allowed.
+
+        // DEBUG_EXP(path.has_recv);
+        // DEBUG_EXP(path.has_sendlike);
+        // check(
+        //     (path.has_recv == true && path.has_sendlike == true)
+        //     || path.has_recv == false
+        //     || path.has_sendlike == false,
+        //     "The following patterns are not allowed. "
+        //     "This is a limitation of the current implementation. "
+        //     "(1) `if (cond) { receive(); } send(pkt);` "
+        //     "(2) receive(); if (cond) { send(); } "
+        //     "(3) if (cond1) { receive(); } if (cond2) { send(); } "
+        //     "Try redesigning execution logic or setting a breakpoint."
+        // );
         label.has_recv = path.has_recv;
         label.has_sendlike = path.has_sendlike;
         labels.push_back(label);
@@ -756,6 +802,7 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
 
 TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST& stmt,
     PathMeta path, LabelMeta& label_meta) {
+    DEBUG("Enter {}", __func__);
     assert(stmt.rule == StmtAST::If && "Internal error: not an if statement");
     DEBUG_EXP(path.has_recv);
 
@@ -835,6 +882,7 @@ TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST& stmt
         res_path.has_sendlike = true;
     }
 
+    DEBUG("Exit {}", __func__);
     return res_path;
 }
 
@@ -858,7 +906,6 @@ TLABuilder::PathMeta TLABuilder::analyzeWhileStmt(const string& type, StmtAST& s
     return path;
 }
 
-// TODO: merge with `analyzeThreadStmts`.
 auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
     PathMeta path, bool has_temp) -> pair<PathMeta, vector<LabelMeta>> {
     DEBUG("Enter {}", __func__);
@@ -882,17 +929,19 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
             format("No statement follows label {}", label.name)
         );
         // TODO: correct?
-        check(
-            (path.has_recv == true && path.has_sendlike == true)
-                || path.has_recv == false
-                || path.has_sendlike == false,
-            "The following patterns are not allowed. "
-            "This is a limitation of the current implementation. "
-            "(1) `if (cond) { receive(); } send(pkt);` "
-            "(2) receive(); if (cond) { send(); } "
-            "(3) if (cond1) { receive(); } if (cond2) { send(); } "
-            "Try redesigning execution logic or setting a breakpoint."
-        );
+        // DEBUG_EXP(path.has_recv);
+        // DEBUG_EXP(path.has_sendlike);
+        // check(
+        //     (path.has_recv == true && path.has_sendlike == true)
+        //         || path.has_recv == false
+        //         || path.has_sendlike == false,
+        //     "The following patterns are not allowed. "
+        //     "This is a limitation of the current implementation. "
+        //     "(1) `if (cond) { receive(); } send(pkt);` "
+        //     "(2) receive(); if (cond) { send(); } "
+        //     "(3) if (cond1) { receive(); } if (cond2) { send(); } "
+        //     "Try redesigning execution logic or setting a breakpoint."
+        // );
         label.has_recv = path.has_recv;
         label.has_sendlike = path.has_sendlike;
         labels.push_back(label);
@@ -994,6 +1043,7 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
     }
 
     collect_last_label();
+    DEBUG_EXP(path.has_recv);
     DEBUG_EXP(path.has_sendlike);
     DEBUG("Exit {}", __func__);
     return {path, labels};
@@ -1145,7 +1195,16 @@ void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
         name = "__Print";
     }
     else if (name.starts_with("__")) {
-        assert(false && "Internal error: analyzing a primitive call twice");
+        if (name == "__CheckCacheConsistency") {
+            check(
+                args.size() == 2,
+                "`__CheckCacheConsistency` should have exactly two arguments, "
+                "i.e. the packet and whether it is the start of an event"
+            );
+        }
+        else {
+            assert(false && "Internal error: analyzing a primitive call twice");
+        }
     }
     else {
         check(
@@ -1243,7 +1302,8 @@ bool TLABuilder::analyzeTempStmt(const string& type, vector<AssignAST*>& assigns
     return has_effect;
 }
 
-void TLABuilder::mangleTLA(const string& type, const vector<string*>& tla) {
+void TLABuilder::mangleTLA(const string& type, const vector<string*>& tla,
+    bool is_cv_decl) {
     auto is_ident = [](const string& s) {
         return s.size() > 0 && !std::isdigit(s[0])
             && std::ranges::all_of(s, [](char c) {
@@ -1263,7 +1323,14 @@ void TLABuilder::mangleTLA(const string& type, const vector<string*>& tla) {
         bool is_key = !is_first && ( *tla[i - 1] == "."
             || (!is_last && prefix.contains(*tla[i - 1]) && suffix.contains(*tla[i + 1]))
         );
-        if (is_key || !localNames.contains(*tla[i])) {
+        if (is_key) {
+            continue;
+        }
+        // Replace `self` with `__Node(self)`.
+        if (!localNames.contains(*tla[i])) {
+            if (*tla[i] == "self") {
+                *tla[i] = "__Node(self)";
+            }
             continue;
         }
         check(
@@ -1273,7 +1340,7 @@ void TLABuilder::mangleTLA(const string& type, const vector<string*>& tla) {
                 *tla[i], type
             )
         );
-        *tla[i] += "[__Node(self)]";
+        *tla[i] += is_cv_decl ? "[__n]" : "[__Node(self)]";
     }
 }
 
@@ -1321,14 +1388,18 @@ string TLABuilder::buildTLA() {
 
     res += "  variables\n";
     for (const auto& [type, vec] : type2varDecls) {
-        for (const auto& [name, exp] : vec) {
+        for (const auto& [name, exp, is_choice] : vec) {
+            auto op = is_choice ? "\\in" : "=";
+            auto type_set = toUpper(type) + "_SET";
+            auto exp_s = exp.to_string();
             if (type == all) {
-                res += format("    {} = {};\n", name, exp.to_string());
+                res += format("    {} {} {};\n", name, op, exp_s);
             } else {
-                res += format(
-                    "    {} = [__n \\in {} |-> ({})];\n",
-                    name, toUpper(type) + "_SET", exp.to_string()
-                );
+                if (is_choice) {
+                    res += format("    {} \\in [{} -> ({})];\n", name, type_set, exp_s);
+                } else {
+                    res += format("    {} = [__n \\in {} |-> ({})];\n", name, type_set, exp_s);
+                }
             }
         }
     }
@@ -1347,9 +1418,11 @@ string TLABuilder::buildTLA() {
             continue;
         }
         for (const auto& [name, exp] : vec) {
+            auto type_set = toUpper(type) + "_SET";
+            auto exp_s = exp.to_string();
             res += format(
                 "    {} == [__n \\in {} |-> ({})]\n",
-                name, toUpper(type) + "_SET", exp.to_string()
+                name, type_set, exp_s
             );
         }
     }
@@ -1619,6 +1692,43 @@ string TLABuilder::buildMacros() {
         "  print __x;\n"
         "}\n";
     res += add_indent(m) + "\n";
+
+    // __CheckCacheConsistency
+    if (auto proj = &decltype(configs)::value_type::first;
+        rg::find(configs, "CHECK_CACHE_CONSISTENCY", proj) != configs.end()) {
+        // TODO: assumptions.
+        m = "macro __CheckCacheConsistency(__pkt, __is_start) {\n"
+            "  if (__pkt.op = WRITE /\\ __is_start) {\n"
+            "    __num := __num + 1;\n"
+            "    __reads := {};\n"
+            "    __values := {};\n"
+            "  }\n"
+            "  else if (__pkt.op = WRITE /\\ ~__is_start) {\n"
+            "    __num := __num - 1;\n"
+            "    __values := __values \\cup {__pkt.value};\n"
+            "  }\n"
+            "  else if (__pkt.op = READ /\\ __is_start) {\n"
+            "    if (__num = 0) {\n"
+            "      __reads := __reads \\cup {__pkt.id};\n"
+            "    }\n"
+            "  }\n"
+            "  else if (__pkt.op = READ /\\ ~__is_start) {\n"
+            "    if (__pkt.id \\in __reads) {\n"
+            "      __Assert(__pkt.value \\in __values, \"CheckCacheConsistency: consistency violation\");\n"
+            "      __reads := __reads \\ {__pkt.id};\n"
+            "    }\n"
+            "  }\n"
+            "  else {\n"
+            "    __Assert(FALSE, \"CheckConsistency: unexpected packet type\");\n"
+            "  }\n"
+            "}\n";
+        res += add_indent(m) + "\n";
+    } else {
+        m = "macro __CheckCacheConsistency(__pkt, __is_start) {\n"
+            "  skip;\n"
+            "}\n";
+        res += add_indent(m) + "\n";
+    }
 
     res.pop_back();
     DEBUG("Exit {}", __func__);

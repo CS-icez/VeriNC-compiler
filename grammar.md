@@ -20,13 +20,14 @@ Section ::= "configuration" "{" Config* "}"
           | "property" "{" Property* "}"
 Config ::= Assign ";"
 Assign ::= IDENT ("[" Comma<Exp> "]")? "=" Exp
+Choice ::= IDENT "in" Exp
 Topology ::= "nodetype" Comma<Type> ";"
            | "node" "(" Type ")" Comma<IDENT ("=" Exp)?> ";"
            | "link" Comma<IDENT> ("--" Comma<IDENT>)* ";"
            | "route" "(" Comma<IDENT> ")" "{" RouteEntry* "}"
 Type ::= IDENT
 RouteEntry ::= Comma<IDENT> ":" IDENT ";"
-Protocol ::= ("var" | "const") "(" (Type | "all") ")" Comma<Assign> ";"
+Protocol ::= ("var" | "const") "(" (Type | "all") ")" Comma<Assign | Choice> ";"
            | "fn" IDENT "(" Comma<IDENT> ")" "=" Exp ";"
            | "thread" "(" Type ")" IDENT "{" Stmt+ "}"
 Stmt ::= Breakpoint ":"
@@ -38,7 +39,6 @@ Stmt ::= Breakpoint ":"
          ("elif" "(" Exp ")" "{" Stmt* "}")*
          ("else" "{" Stmt* "}")?
        | "while" "(" Exp ")" "{" Stmt* "}"
-Choice ::= IDENT "in" Exp
 Breakpoint ::= IDENT
 PrimCall ::= Primitive "(" Comma<Exp>? ")"
 Primitive ::= "send" | "unicast" | "multicast" | "receive"

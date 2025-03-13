@@ -272,9 +272,9 @@ private:
     umap<string, umap<string, string>> nexts;
 
     // type -> (name, init)
-    umap<string, vector<pair<string, exp_t>>> type2constDecls;
-    // type -> (name, init)
-    umap<string, vector<pair<string, exp_t>>> type2varDecls;
+    umap<string, vector<tuple<string, exp_t>>> type2constDecls;
+    // type -> (name, init, is_choice)
+    umap<string, vector<tuple<string, exp_t, bool>>> type2varDecls;
     umap<string, uset<string>> type2constNames;
     umap<string, uset<string>> type2varNames;
     // (name, params, exp)
@@ -303,7 +303,10 @@ private:
 
     // Analyze constant/variable declaration.
     void analyzeCV(const string& type, bool is_const, AssignAST* assign);
-    void analyzeThread(const string& type, const string& name, vector<StmtAST*>& stmts);
+    // void analyzeMacro(const string& name, const vector<string>& params,
+    //     vector<StmtAST*>& stmts);
+    void analyzeThread(const string& type, const string& name,
+        vector<StmtAST*>& stmts);
     
     struct PathMeta {
         TriBool has_recv;
@@ -354,9 +357,11 @@ private:
     void addOurConstants();
     void addOurVariables();
     void addOurFns();
+    // void addOurMacros();
     void addOurProperties();
 
-    void mangleTLA(const string& type, const vector<string*>& tla);
+    void mangleTLA(const string& type, const vector<string*>& tla,
+        bool is_cv_decl = false);
 
     string buildTLA();
     string buildCFG();

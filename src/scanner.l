@@ -42,6 +42,7 @@ Identifier  [a-zA-Z_][a-zA-Z0-9_]*
 "var"           { return VAR; }
 "const"         { return CONST; }
 "fn"            { return FN; }
+"macro"         { return MACRO; }
 "thread"        { return THREAD; }
 "temp"          { return TEMP; }
 "in"            { return IN; }
@@ -61,6 +62,7 @@ Identifier  [a-zA-Z_][a-zA-Z0-9_]*
 "exit"          { yylval.p_string = new string(yytext); return PRIMITIVE; }
 "assert"        { yylval.p_string = new string(yytext); return PRIMITIVE; }
 "print"         { yylval.p_string = new string(yytext); return PRIMITIVE; }
+"__CheckCacheConsistency" { yylval.p_string = new string(yytext); return PRIMITIVE; }
 
 {Identifier}    { yylval.p_string = new string(yytext); return IDENT; }
 {OTHER_TOKEN}   { yylval.p_string = new string(yytext); return OTHER_TOKEN; }
