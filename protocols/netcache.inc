@@ -77,9 +77,9 @@ protocol {
         while (Contains(replies, null)) {
             temp s = 1..(base - 1) \cap {i \in REQ_SET : replies[i] = null};
             wait(s # {});
-            temp psn = CHOOSE i \in s : \A j \in s : i.psn <= j.psn;
-            wait(\A i \in DOMAIN __net_buf[sw] : __net_buf[sw, i].id # requests[psn].id);
-            wait(\A i \in DOMAIN __net_buf[svr] : __net_buf[svr, i].id # requests[psn].id);
+            temp psn = CHOOSE i \in s : TRUE; // Choose the minium psn.
+            wait(\A i \in DOMAIN __net_buf[sw] : __net_buf[sw][i].id # requests[psn].id);
+            wait(\A i \in DOMAIN __net_buf[svr] : __net_buf[svr][i].id # requests[psn].id);
             send(requests[psn]);
             // Trigger __CheckCacheConsistency?
         }
@@ -117,7 +117,7 @@ protocol {
                     value = pkt.value;
                 }
                 // A fix to NetCache.
-                send([dst |-> pkt.src, type |-> ACK] @@ pkt);
+                send([src |-> self, dst |-> pkt.src, type |-> ACK] @@ pkt);
             }
             elif (pkt.type = RES) {
                 assert(pkt.src = svr, "SwitchRes: unexpected packet source");
@@ -137,17 +137,17 @@ protocol {
                 blocked_msgs = Tail(blocked_msgs);
                 if (pkt.type = REQ) {
                     if (pkt.op = READ) {
-                        send([dst |-> pkt.src, type |-> RES, value |-> s_value] @@ pkt);
+                        send([src |-> self, dst |-> pkt.src, type |-> RES, value |-> s_value] @@ pkt);
                     }
                     else {
                         s_value = pkt.value;
                         if (pkt.cached) {
                             blocked = TRUE;
                             retx_msg = [src |-> self, dst |-> sw, type |-> CMD, cmd |-> "update", value |-> s_value] @@ pkt;
-                            send([dst |-> pkt.src, type |-> RES] @@ pkt);
+                            send([src |-> self, dst |-> pkt.src, type |-> RES] @@ pkt);
                         }
                         else {
-                            send([dst |-> pkt.src, type |-> RES] @@ pkt);
+                            send([src |-> self, dst |-> pkt.src, type |-> RES] @@ pkt);
                         }
                     }
                 }
@@ -163,7 +163,7 @@ protocol {
                         }
                     }
                     elif (pkt.op = READ) {
-                        send([dst |-> pkt.src, type |-> RES, value |-> s_value] @@ pkt);
+                        send([src |-> self, dst |-> pkt.src, type |-> RES, value |-> s_value] @@ pkt);
                     }
                     elif (pkt.op = WRITE){
                         blocked_msgs = Append(blocked_msgs, pkt);
@@ -175,17 +175,17 @@ protocol {
                 else {
                     if (pkt.type = REQ) {
                         if (pkt.op = READ) {
-                            send([dst |-> pkt.src, type |-> RES, value |-> s_value] @@ pkt);
+                            send([src |-> self, dst |-> pkt.src, type |-> RES, value |-> s_value] @@ pkt);
                         }
                         else {
                             s_value = pkt.value;
                             if (pkt.cached) {
                                 blocked = TRUE;
                                 retx_msg = [src |-> self, dst |-> sw, type |-> CMD, cmd |-> "update", value |-> s_value] @@ pkt;
-                                send([dst |-> pkt.src, type |-> RES] @@ pkt);
+                                send([src |-> self, dst |-> pkt.src, type |-> RES] @@ pkt);
                             }
                             else {
-                                send([dst |-> pkt.src, type |-> RES] @@ pkt);
+                                send([src |-> self, dst |-> pkt.src, type |-> RES] @@ pkt);
                             }
                         }
                     }

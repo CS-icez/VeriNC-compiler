@@ -213,6 +213,7 @@ void TLABuilder::analyze(TopologyAST* topology) {
                             format("Declare a link with unknown node {}", *dst)
                         );
                         check(*src != *dst, format("Declare a self-link of {}", *src));
+                        DEBUG("Link {} -- {}", *src, *dst);
                         links[*src].insert(*dst);
                         links[*dst].insert(*src);
                         // Neighbors are naturally next hops.
@@ -285,10 +286,12 @@ string TLABuilder::findNext(const string& src, const string& dst,
     auto success_cnt = 0;
     auto res = null;
     // Enumerate all possible next hops.
+    DEBUG_EXP(src);
+    DEBUG_EXP(links[src]);
     for (const auto& next : links[src]) {
         if (nexts[next][dst] != null) {
             ++success_cnt;
-            res = nexts[next][dst];
+            res = next;
             continue;
         }
         if (visited.contains({next, dst})) {
@@ -298,7 +301,7 @@ string TLABuilder::findNext(const string& src, const string& dst,
         auto t = findNext(next, dst, visited);
         if (t != null) {
             ++success_cnt;
-            res = t;
+            res = next;
         }
     }
     check(success_cnt > 0, format("{} and {} is not connected", src, dst));
@@ -307,6 +310,7 @@ string TLABuilder::findNext(const string& src, const string& dst,
         src, dst
     ));
     nexts[src][dst] = res;
+    DEBUG("Next hop from {} to {} is {}", src, dst, res);
     return res;
 }
 
@@ -1789,6 +1793,7 @@ string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
         spaces = string(indent, ' ');
     }
 
+    // TODO: This is wrong.
     // Introduce a `with` block to declare temporary values.
     if (!label_meta.temps.empty()) {
         res += format("{}with (\n", spaces);

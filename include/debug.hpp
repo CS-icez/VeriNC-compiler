@@ -2,6 +2,7 @@
 #include <iostream>
 #include <format>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace std {
@@ -46,6 +47,28 @@ namespace std {
                 first = false;
             }
             return format_to(out, "]");
+        }
+    };
+
+    template <typename T>
+    struct formatter<unordered_set<T>> {
+        constexpr auto parse(format_parse_context& ctx) {
+            return ctx.begin();
+        }
+        
+        auto format(const unordered_set<T>& set, format_context& ctx) const {
+            auto out = ctx.out();
+            out = format_to(out, "{{");
+            
+            bool first = true;
+            for (const auto& elem : set) {
+                if (!first) {
+                    out = format_to(out, ", ");
+                }
+                out = format_to(out, "{}", elem);
+                first = false;
+            }
+            return format_to(out, "}}");
         }
     };
 }

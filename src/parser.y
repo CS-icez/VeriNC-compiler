@@ -60,10 +60,11 @@ void yyerror(SpecAST*&, const char* s);
 %token <p_string> IDENT OTHER_TOKEN
 %token <p_string>
     CONFIGURATION TOPOLOGY PROTOCOL PROPERTY
-    NODETYPE NODE LINK DoubleMinus ROUTE
+    NODETYPE NODE LINK DMINUS ROUTE
     VAR CONST FN MACRO THREAD TEMP IN
     IF ELIF ELSE WHILE BREAK CONTINUE
     PRIMITIVE
+    DLESS DGREATER
 
 %type <p_Spec>       Spec
 %type <p_Section>    Section
@@ -166,7 +167,7 @@ SemiDecl
     ;
 
 Links
-    : Links DoubleMinus Idents { $1->push_back($3); $$ = $1; }
+    : Links DMINUS Idents { $1->push_back($3); $$ = $1; }
     | Idents { $$ = make_vec($1); }
 
 RouteEntries
@@ -300,8 +301,14 @@ ExpTokenNoComma
         $2->push_back(make_str("}"));
         $$ = $2;
     }
+    | DLESS ExpTokensComma DGREATER {
+        $2->insert($2->begin(), make_str("<<"));
+        $2->push_back(make_str(">>"));
+        $$ = $2;
+    }
     | '[' ']' { $$ = make_vec(make_str("["), make_str("]")); }
     | '{' '}' { $$ = make_vec(make_str("{"), make_str("}")); }
+    | DLESS DGREATER { $$ = make_vec(make_str("<<"), make_str(">>")); }
     | IDENT { $$ = make_vec($1); }
     | OTHER_TOKEN { $$ = make_vec($1); }
     /* | QUANTIFIER { $$ = make_vec($1); } */

@@ -37,7 +37,7 @@ Identifier  [a-zA-Z_][a-zA-Z0-9_]*
 "nodetype"      { return NODETYPE; }
 "node"          { return NODE; }
 "link"          { return LINK; }
-"--"            { return DoubleMinus; }
+"--"            { return DMINUS; }
 "route"         { return ROUTE; }
 "var"           { return VAR; }
 "const"         { return CONST; }
@@ -63,6 +63,9 @@ Identifier  [a-zA-Z_][a-zA-Z0-9_]*
 "assert"        { yylval.p_string = new string(yytext); return PRIMITIVE; }
 "print"         { yylval.p_string = new string(yytext); return PRIMITIVE; }
 "__CheckCacheConsistency" { yylval.p_string = new string(yytext); return PRIMITIVE; }
+
+"<<"            { return DLESS; }
+">>"            { return DGREATER; }
 
 {Identifier}    { yylval.p_string = new string(yytext); return IDENT; }
 {OTHER_TOKEN}   { yylval.p_string = new string(yytext); return OTHER_TOKEN; }
