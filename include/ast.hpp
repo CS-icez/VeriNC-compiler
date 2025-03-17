@@ -165,6 +165,7 @@ struct StmtAST {
         Assign,
         Null,
         PrimCall,
+        MacroCall,
         Temp,
         If,
         While, Break, Continue,

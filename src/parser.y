@@ -89,7 +89,7 @@ void yyerror(SpecAST*&, const char* s);
 %type <vec_Property>   Properties
 %type <vec_Type>       Types
 %type <vec_Assign>     Assigns SemiDecls
-%type <vec_ident>      Idents Tla
+%type <vec_ident>      Idents OptIdents Tla
 %type <vv_ident>       Links
 
 %type <pa_vE_vvS> OptElifs Elifs
@@ -152,6 +152,11 @@ Idents
     | IDENT { $$ = make_vec($1); }
     ;
 
+OptIdents
+    : Idents { $$ = $1; }
+    | %empty { $$ = make_vec<string>(); }
+    ;
+
 Type
     : IDENT { $$ = make_ast<TypeAST>($1); }
     ;
@@ -188,7 +193,7 @@ Protocol
     : VAR '(' Type ')' Assigns ';' { $$ = make_ast<ProtocolAST>(ProtocolAST::Var, $3, $5, n4); }
     | CONST '(' Type ')' Assigns ';' { $$ = make_ast<ProtocolAST>(ProtocolAST::Const, $3, $5, n4); }
     | FN IDENT '(' Idents ')' '=' Exp ';' { $$ = make_ast<ProtocolAST>(ProtocolAST::Fn, n2, $2, $4, $7, n1); }
-    /* | MACRO IDENT '(' Idents ')' '{' Stmts '}' { $$ = make_ast<ProtocolAST>(ProtocolAST::Macro, n2, $2, $4, n1, $7); } */
+    | MACRO IDENT '(' OptIdents ')' '{' Stmts '}' { $$ = make_ast<ProtocolAST>(ProtocolAST::Macro, n2, $2, $4, n1, $7); }
     | THREAD '(' Type ')' IDENT '{' Stmts '}' { $$ = make_ast<ProtocolAST>(ProtocolAST::Thread, $3, n1, $5, n2, $7); }
     ;
 
@@ -202,6 +207,7 @@ Stmt
     | Assigns ';' { $$ = make_ast<StmtAST>(StmtAST::Assign, n2, $1, n5); }
     | ';' { $$ = make_ast<StmtAST>(StmtAST::Null, n8); }
     | PRIMITIVE '(' OptExps ')' ';' { $$ = make_ast<StmtAST>(StmtAST::PrimCall, $1, $3, n6); }
+    | IDENT '(' OptExps ')' ';' { $$ = make_ast<StmtAST>(StmtAST::MacroCall, $1, $3, n6); }
     | TEMP Assigns ';' { $$ = make_ast<StmtAST>(StmtAST::Temp, n2, $2, n5); }
     | IF '(' Exp ')' '{' Stmts '}' OptElifs OptElse {
         if ($8 != nullptr) {

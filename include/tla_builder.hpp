@@ -107,6 +107,9 @@ private:
         TriBool has_recv;
         TriBool has_sendlike;
     };
+    // (name, label)
+    vector<tuple<string, LabelMeta>> macros;
+    uset<string> macroNames;
     // (type, name, labels)
     vector<tuple<string, string, vector<LabelMeta>>> threads;
 

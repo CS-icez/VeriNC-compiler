@@ -29,11 +29,13 @@ Type ::= IDENT
 RouteEntry ::= Comma<IDENT> ":" IDENT ";"
 Protocol ::= ("var" | "const") "(" (Type | "all") ")" Comma<Assign | Choice> ";"
            | "fn" IDENT "(" Comma<IDENT> ")" "=" Exp ";"
+           | "macro" "(" Comma<IDENT>? ")" "{" Stmt+ "}"
            | "thread" "(" Type ")" IDENT "{" Stmt+ "}"
 Stmt ::= Breakpoint ":"
        | Comma<Assign> ";"
        | ";"
        | PrimCall ";"
+       | IDENT "(" Comma<Exp>? ")" ";"
        | "temp" Comma<Assign | Choice> ";"
        | "if" "(" Exp ")" "{" Stmt* "}"
          ("elif" "(" Exp ")" "{" Stmt* "}")*
