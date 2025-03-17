@@ -101,17 +101,19 @@ protocol {
                 send(pkt);
             }
             elif (pkt.type = REQ) {
+                temp clt_entry = [msg_id |-> pkt.msg_id, psn |-> pkt.psn];
                 if (pkt.psn % MSG_SIZE = 0) {
-                    CLT[pkt.src] = [msg_id |-> pkt.msg_id, psn |-> pkt.psn];
+                    CLT[pkt.src] = clt_entry;
                 }
+                temp cur_clt = IF pkt.psn % MSG_SIZE = 0 THEN clt_entry ELSE CLT[pkt.src];
                 temp src = pkt.src;
-                temp msg_id = IF CLT[pkt.src] = null THEN null ELSE CLT[pkt.src].msg_id;
-                temp psn0 = IF CLT[pkt.src] = null THEN null ELSE CLT[pkt.src].psn;
+                temp msg_id = cur_clt.msg_id;
+                temp psn0 = cur_clt.psn;
                 temp gap = pkt.psn - psn0;
                 temp agg = (msg_id % (2 * WINDOW_MSG_NUM)) * MSG_SIZE + gap;
                 temp cnt = TrueCount(src :> TRUE @@ [i \in CLIENT_SET |-> bitmap[agg, i]]);
                 temp dual_agg = ((msg_id + WINDOW_MSG_NUM) % (2 * WINDOW_MSG_NUM)) * MSG_SIZE + gap;
-                if (msg_id # null /\ gap >= 0 /\ gap < MSG_SIZE) {
+                if (cur_clt # null /\ gap >= 0 /\ gap < MSG_SIZE) {
                     if (cnt = CLIENT_NUM) {
                         bitmap = [a \in AGG_SET, i \in CLIENT_SET |->
                             CASE a = agg /\ i = src -> TRUE

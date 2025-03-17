@@ -129,28 +129,31 @@ protocol {
         }
     }
 
+    macro ServerRecvNormal(pkt) {
+        if (pkt.type = REQ) {
+            if (pkt.op = READ) {
+                send([src |-> self, dst |-> pkt.src, type |-> RES, value |-> s_value] @@ pkt);
+            }
+            else {
+                s_value = pkt.value;
+                if (pkt.cached) {
+                    blocked = TRUE;
+                    retx_msg = [src |-> self, dst |-> sw, type |-> CMD, cmd |-> "update", value |-> s_value] @@ pkt;
+                    send([src |-> self, dst |-> pkt.src, type |-> RES] @@ pkt);
+                }
+                else {
+                    send([src |-> self, dst |-> pkt.src, type |-> RES] @@ pkt);
+                }
+            }
+        }
+    }
+
     thread(Server) ServerRecv {
     L_ServerRecv:
         while (\E c \in CLIENT_SET \cup CONTROLLER_SET : ~__NodeTerminated(c)) {
             if (~blocked /\ blocked_msgs # <<>>) {
-                temp pkt = Head(blocked_msgs);
+                ServerRecvNormal(Head(blocked_msgs));
                 blocked_msgs = Tail(blocked_msgs);
-                if (pkt.type = REQ) {
-                    if (pkt.op = READ) {
-                        send([src |-> self, dst |-> pkt.src, type |-> RES, value |-> s_value] @@ pkt);
-                    }
-                    else {
-                        s_value = pkt.value;
-                        if (pkt.cached) {
-                            blocked = TRUE;
-                            retx_msg = [src |-> self, dst |-> sw, type |-> CMD, cmd |-> "update", value |-> s_value] @@ pkt;
-                            send([src |-> self, dst |-> pkt.src, type |-> RES] @@ pkt);
-                        }
-                        else {
-                            send([src |-> self, dst |-> pkt.src, type |-> RES] @@ pkt);
-                        }
-                    }
-                }
             }
             else {
                 temp pkt = receive();
@@ -173,22 +176,7 @@ protocol {
                     }
                 }
                 else {
-                    if (pkt.type = REQ) {
-                        if (pkt.op = READ) {
-                            send([src |-> self, dst |-> pkt.src, type |-> RES, value |-> s_value] @@ pkt);
-                        }
-                        else {
-                            s_value = pkt.value;
-                            if (pkt.cached) {
-                                blocked = TRUE;
-                                retx_msg = [src |-> self, dst |-> sw, type |-> CMD, cmd |-> "update", value |-> s_value] @@ pkt;
-                                send([src |-> self, dst |-> pkt.src, type |-> RES] @@ pkt);
-                            }
-                            else {
-                                send([src |-> self, dst |-> pkt.src, type |-> RES] @@ pkt);
-                            }
-                        }
-                    }
+                    ServerRecvNormal(pkt);
                 }
             }
         }
