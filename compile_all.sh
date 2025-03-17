@@ -3,3 +3,4 @@ set -e
 ./bin/main protocols/atp.inc
 ./bin/main protocols/netreduce.inc
 ./bin/main protocols/netcache.inc
+./bin/main protocols/farreach.inc
