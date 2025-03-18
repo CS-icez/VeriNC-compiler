@@ -108,21 +108,22 @@ struct ConfigAST {
 // TODO: support ident[key1][key2] = exp
 struct AssignAST {
     std::string* ident;
-    std::vector<ExpAST*>* keys;
+    std::vector<std::vector<ExpAST*>*>* vec_keys;
     ExpAST* exp;
     bool is_choice;
 
-    AssignAST(std::string* _ident, std::vector<ExpAST*>* _keys, ExpAST* _exp, bool _is_choice) :
-        ident(_ident), keys(_keys), exp(_exp), is_choice(_is_choice) { }
+    AssignAST(std::string* _ident, std::vector<std::vector<ExpAST*>*>* _vec_keys,
+        ExpAST* _exp, bool _is_choice) :
+        ident(_ident), vec_keys(_vec_keys), exp(_exp), is_choice(_is_choice) { }
     ~AssignAST() {
         delete_if(ident);
-        delete_if(keys);
+        delete_if(vec_keys);
         delete_if(exp);
     }
 
     AssignAST(const AssignAST& other) {
         ident = deep_copy(other.ident);
-        keys = deep_copy(other.keys);
+        vec_keys = deep_copy(other.vec_keys);
         exp = deep_copy(other.exp);
         is_choice = other.is_choice;
     }
@@ -137,7 +138,7 @@ struct AssignAST {
     friend void swap(AssignAST& a, AssignAST& b) {
         using std::swap;
         swap(a.ident, b.ident);
-        swap(a.keys, b.keys);
+        swap(a.vec_keys, b.vec_keys);
         swap(a.exp, b.exp);
         swap(a.is_choice, b.is_choice);
     }

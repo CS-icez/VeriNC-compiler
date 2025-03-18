@@ -139,9 +139,10 @@ bool TLABuilder::isKey(const vector<string*>& tla, size_t i) {
     // Line 1070 of https://github.com/tlaplus/tlaplus/blob/master/tlatools/org.lamport.tlatools/src/pcal/PlusCal2.tla#L284
     bool is_last = (i == tla.size() - 1);
     bool is_first = (i == 0);
+    auto dot = uset({"."s, "!."s});
     auto prefix = uset({"["s, ","s});
     auto suffix = uset({":"s, "|->"s});
-    bool is_field_ref_of_value = (!is_first && *tla[i - 1] == ".");
+    bool is_field_ref_of_value = (!is_first && dot.contains(*tla[i - 1]));
     bool is_field_of_struct_literal = (!is_first && !is_last
         && prefix.contains(*tla[i - 1]) && suffix.contains(*tla[i + 1]));
     return is_field_ref_of_value || is_field_of_struct_literal;
@@ -163,8 +164,8 @@ void TLABuilder::mangleTLA(const string& type, const vector<string*>& tla,
         check(
             type2localNames[type].contains(*tla[i]),
             format(
-                "Identifier {} cannot be accessed by node type {}",
-                *tla[i], type
+                "Identifier {} cannot be accessed by node type {} in expression {}",
+                *tla[i], type, tla
             )
         );
         *tla[i] += is_cv_decl ? "[__n]" : "[__Node(self)]";

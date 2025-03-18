@@ -25,8 +25,8 @@ void TLABuilder::analyze(ConfigAST* config) {
     addNewName(name);
     names.insert(name);
     check(
-        assign->keys == nullptr,
-        format("LHS of configuration should be an identifier")
+        assign->vec_keys == nullptr,
+        format("LHS of configuration {} should be an identifier", name)
     );
     check(
         !assign->is_choice,

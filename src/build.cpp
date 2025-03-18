@@ -476,8 +476,10 @@ std::string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
                     if (localNames.contains(lhs)) {
                         lhs += "[__Node(self)]";
                     }
-                    if (assign->keys != nullptr) {
-                        lhs += format("[{}]", exp_t::to_string(*assign->keys));
+                    if (assign->vec_keys != nullptr) {
+                        for (const auto& keys : *assign->vec_keys) {
+                            lhs += format("[{}]", exp_t::to_string(*keys));
+                        }
                     }
                     auto rhs = exp_t::to_string(*assign->exp);
                     assigns.push_back(format("{} := {}", lhs, rhs));

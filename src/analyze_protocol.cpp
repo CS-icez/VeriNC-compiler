@@ -87,7 +87,7 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
     }
 
     check(
-        assign->keys == nullptr,
+        assign->vec_keys == nullptr,
         format("LHS of {} declaration should be an identifier", cv)
     );
     auto exp = assign->exp;

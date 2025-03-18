@@ -19,7 +19,7 @@ Section ::= "configuration" "{" Config* "}"
           | "protocol" "{" Protocol* "}"
           | "property" "{" Property* "}"
 Config ::= Assign ";"
-Assign ::= IDENT ("[" Comma<Exp> "]")? "=" Exp
+Assign ::= IDENT ("[" Comma<Exp> "]")* "=" Exp
 Choice ::= IDENT "in" Exp
 Topology ::= "nodetype" Comma<Type> ";"
            | "node" "(" Type ")" Comma<IDENT ("=" Exp)?> ";"

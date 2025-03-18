@@ -52,6 +52,7 @@ void yyerror(SpecAST*&, const char* s);
     vector<string*>*        vec_ident;
 
     vector<vector<string*>*>* vv_ident;
+    vector<vector<ExpAST*>*>* vv_Exp;
 
     PA_E_VS*   pa_E_vS;
     PA_VE_VVS* pa_vE_vvS;
@@ -85,12 +86,13 @@ void yyerror(SpecAST*&, const char* s);
 %type <vec_RouteEntry> RouteEntries
 %type <vec_Protocol>   Protocols
 %type <vec_Stmt>       Stmts
-%type <vec_Exp>        Exps OptExps
+%type <vec_Exp>        Exps OptExps Index
 %type <vec_Property>   Properties
 %type <vec_Type>       Types
 %type <vec_Assign>     Assigns SemiDecls
 %type <vec_ident>      Idents OptIdents Tla
 %type <vv_ident>       Links
+%type <vv_Exp>         Indices OptIndices
 
 %type <pa_vE_vvS> OptElifs Elifs
 %type <pa_E_vS>   Elif
@@ -125,9 +127,22 @@ Config
     ;
 
 Assign
-    : IDENT '=' Exp { $$ = make_ast<AssignAST>($1, n1, $3, false); }
-    | IDENT '[' Exps ']' '=' Exp { $$ = make_ast<AssignAST>($1, $3, $6, false); }
-    | IDENT IN Exp { $$ = make_ast<AssignAST>($1, n1, $3, true); }
+    : IDENT OptIndices '=' Exp { $$ = make_ast<AssignAST>($1, $2, $4, false); }
+    | IDENT OptIndices IN Exp { $$ = make_ast<AssignAST>($1, $2, $4, true); }
+    ;
+
+OptIndices
+    : Indices { $$ = $1; }
+    | %empty { $$ = nullptr; }
+    ;
+
+Indices
+    : Indices Index { $1->push_back($2); $$ = $1; }
+    | Index { $$ = make_vec($1); }
+    ;
+
+Index
+    : '[' Exps ']' { $$ = $2; }
     ;
 
 Topologies

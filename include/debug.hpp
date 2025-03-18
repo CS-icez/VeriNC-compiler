@@ -2,6 +2,7 @@
 #include <iostream>
 #include <format>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -66,6 +67,28 @@ namespace std {
                     out = format_to(out, ", ");
                 }
                 out = format_to(out, "{}", elem);
+                first = false;
+            }
+            return format_to(out, "}}");
+        }
+    };
+
+    template <typename K, typename V>
+    struct formatter<unordered_map<K, V>> {
+        constexpr auto parse(format_parse_context& ctx) {
+            return ctx.begin();
+        }
+        
+        auto format(const unordered_map<K, V>& map, format_context& ctx) const {
+            auto out = ctx.out();
+            out = format_to(out, "{{");
+            
+            bool first = true;
+            for (const auto& [key, value] : map) {
+                if (!first) {
+                    out = format_to(out, ", ");
+                }
+                out = format_to(out, "{}: {}", key, value);
                 first = false;
             }
             return format_to(out, "}}");

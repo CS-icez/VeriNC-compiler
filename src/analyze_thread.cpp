@@ -130,13 +130,14 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
             case StmtAST::If:
                 check_after_exit();
                 path = analyzeIfStmt(type, *stmt, path, label);
-                check(
-                    path.branch_has_label == false
-                        || it + 1 == stmts.end()
-                        || (*(it + 1))->rule == StmtAST::Breakpoint,
-                    "`if` statement must be followed by a breakpoint "
-                    "if any of its branches has a breakpoint"   
-                );
+                // TODO: also OK if surrounded by `while`.
+                // check(
+                //     path.branch_has_label == false
+                //         || it + 1 == stmts.end()
+                //         || (*(it + 1))->rule == StmtAST::Breakpoint,
+                //     "`if` statement must be followed by a breakpoint "
+                //     "if any of its branches has a breakpoint"   
+                // );
                 label.stmts.push_back(stmt);
                 break;
             case StmtAST::While:
@@ -374,13 +375,14 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
                 // TODO: test no problem with nested branches.
                 check_after_exit();
                 path = analyzeIfStmt(type, *stmt, path, label);
-                check(
-                    path.branch_has_label == false
-                        || it + 1 == stmts.end()
-                        || (*(it + 1))->rule == StmtAST::Breakpoint,
-                    "`if` statement must be followed by a breakpoint "
-                    "if any of its branches has a breakpoint"
-                );
+                // TODO: also OK if surrounded by `while`.
+                // check(
+                //     path.branch_has_label == false
+                //         || it + 1 == stmts.end()
+                //         || (*(it + 1))->rule == StmtAST::Breakpoint,
+                //     "`if` statement must be followed by a breakpoint "
+                //     "if any of its branches has a breakpoint"
+                // );
                 label.stmts.push_back(stmt);
                 break;
             case StmtAST::While:
@@ -438,13 +440,15 @@ void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assig
 
     for (auto assign : assigns) {
         auto exp = assign->exp;
-        if (assign->keys != nullptr) {
-            for (auto key : *assign->keys) {
-                check(
-                    key->rule == ExpAST::TLA,
-                    format("Keys of assignment to {} should not involve primitive calls", ident)
-                );
-                mangleTLA(type, *key->tla);
+        if (assign->vec_keys != nullptr) {
+            for (auto keys : *assign->vec_keys) {
+                for (auto key : *keys) {
+                    check(
+                        key->rule == ExpAST::TLA,
+                        format("Keys of assignment to {} should not involve primitive calls", ident)
+                    );
+                    mangleTLA(type, *key->tla);
+                }
             }
         }
         check(
@@ -478,7 +482,7 @@ void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assig
 
 void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
     vector<ExpAST*>& args, PathMeta& path) {
-    DEBUG("Enter {}", __func__);
+    DEBUG("Enter {} with name={}", __func__, name);
     if (name == "send" || name == "unicast" || name == "multicast") {
         path.has_effect = true;
         check(
@@ -589,7 +593,7 @@ void TLABuilder::analyzePrimCallStmt(const string& type, string& name,
         );
         mangleTLA(type, *exp->tla);
     }
-    DEBUG("Exit {}", __func__);
+    DEBUG("Exit {} with name={}", __func__, name);
 }
 
 void TLABuilder::analyzeReceiveCall([[maybe_unused]] const string& type, string& name,
@@ -629,7 +633,7 @@ bool TLABuilder::analyzeTempStmt(const string& type, vector<AssignAST*>& assigns
             format("Declare temporary value with existing name {}", *assign->ident)
         );
         check(
-            assign->keys == nullptr,
+            assign->vec_keys == nullptr,
             format("LHS of temporary value declaration "
                 "should be an identifier", *assign->ident)
         );

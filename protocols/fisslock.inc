@@ -18,7 +18,7 @@ topology {
 }
 
 protocol {
-    const(all) MACHINE_NUM = CLIENT_NUM \div CLIENTS_PER_MACHINE;
+    const(all) MACHINE_NUM = (CLIENT_NUM + CLIENTS_PER_MACHINE - 1) \div CLIENTS_PER_MACHINE;
     const(all) MACHINE_SET = 1..MACHINE_NUM;
     var(all) id = 1;
     var(all) agents = [m \in MACHINE_SET |-> null];
@@ -32,9 +32,9 @@ protocol {
 
     fn B2I(b) = IF b THEN 1 ELSE 0;
     fn MT(m, t) = [mid |-> m, tid |-> t];
-    fn MTM(m, t, mode) = [mid |-> m, tid |-> t, mode |-> mode];
+    fn MTM(m, t, _mode) = [mid |-> m, tid |-> t, mode |-> _mode];
 
-    fn Holders = {x \in CLIENT_SET : holding[x]};
+    fn Holders(unused) = {x \in CLIENT_SET : holding[x]};
 
     var(Client) stage = 1;
     var(Client) c_mode in {EXCLUSIVE, SHARED};
@@ -50,18 +50,6 @@ protocol {
     var(Switch) incarnation = 0;
     var(Switch) seq = [c \in CLIENT_SET |-> 0];
     var(Switch) s_pkt = null;
-
-    thread(Client) ClientApp {
-    L_ClientAcquire:
-        assert(stage = 1 /\ ~holding, "ClientApp: logic error");
-        ClientLibAcquire(Mac(self), self, mode);
-        stage = 2;
-    L_ClientRelease:
-        wait(holding);
-        assert(stage = 2, "ClientApp: logic error");
-        ClientLibRelease(Mac(self), self);
-        stage = 3;
-    }
 
     macro ClientSendRequest(pkt) {
         temp csr_template = [id |-> id, psn |-> Len(requests) + 1, src |-> self,
@@ -81,7 +69,7 @@ protocol {
         }
         elif (MT(mid, tid) \in agents[m].holders
             \/ Contains(agents[m].wqueue, MTM(mid, tid, mode))) {
-            skip;
+            ;
         }
         else {
             // Happens when incarnation check fails and agent is restored.
@@ -105,14 +93,14 @@ protocol {
             elif (mode = SHARED /\ agents[m].mode = SHARED) {
                 assert(MT(mid, tid) \notin agents[m].holders,
                     "AgentAcquire: already holding the lock");
-                agents[m].holders = @ \cup {MT(mid, tid)} ||
-                agents[m].incarnation = @ + 1;
+                agents[m]["holders"] = @ \cup {MT(mid, tid)},
+                agents[m]["incarnation"] = @ + 1;
             }
             else {
                 assert(~Contains(agents[m].wqueue, MTM(mid, tid, mode)),
                     "AgentAcquire: already in wait queue");
-                agents[m].wqueue = Append(@, MTM(mid, tid, mode)) ||
-                agents[m].incarnation = @ + B2I(mode = SHARED);
+                agents[m]["wqueue"] = Append(@, MTM(mid, tid, mode)),
+                agents[m]["incarnation"] = @ + B2I(mode = SHARED);
             }
         }
     }
@@ -127,7 +115,7 @@ protocol {
             if (MT(mid, tid) \notin agents[m].holders) {
                 // assert(Contains(agents[m].wqueue, MTM(mid, tid, mode_[tid])),
                 //     "AgentRelease: logic error");
-                agents[m].wqueue = SelectSeq(@, LAMBDA x : x.mid # mid \/ x.tid # tid);
+                agents[m]["wqueue"] = SelectSeq(@, LAMBDA x : x.mid # mid \/ x.tid # tid);
             }
             elif (agents[m].holders = {MT(mid, tid)}) {
                 if (agents[m].wqueue = <<>>) {
@@ -148,7 +136,7 @@ protocol {
                 agents[m] = null;
             }
             else {
-                agents[m].holders = @ \ {MT(mid, tid)};
+                agents[m]["holders"] = @ \ {MT(mid, tid)};
             }
         }
     }
@@ -215,6 +203,18 @@ protocol {
         }
     }
 
+    thread(Client) ClientApp {
+    L_ClientAcquire:
+        assert(stage = 1 /\ ~holding, "ClientApp: logic error");
+        ClientLibAcquire(Mac(self), self, c_mode);
+        stage = 2;
+    L_ClientRelease:
+        wait(holding);
+        assert(stage = 2, "ClientApp: logic error");
+        ClientLibRelease(Mac(self), self);
+        stage = 3;
+    }
+
     thread(Client) ClientRecv {
     L_ClientRecv:
         while (stage < 3 \/ pending # {}) {
@@ -226,8 +226,8 @@ protocol {
                 ) {
                     temp waiter = Head(agents[Mac(self)].wqueue);
                     temp inc = agents[Mac(self)].incarnation;
-                    agents[Mac(self)].wqueue = Tail(@) ||
-                    agents[Mac(self)].holders = @ \cup {MT(waiter.mid, waiter.tid)};
+                    agents[Mac(self)]["wqueue"] = Tail(@),
+                    agents[Mac(self)]["holders"] = @ \cup {MT(waiter.mid, waiter.tid)};
                     ClientSendRequest(waiter @@ [type |-> GRANT, agent |-> null, incarnation |-> inc]);
                 }
                 granting = FALSE;
@@ -268,7 +268,7 @@ protocol {
     L_ClientRetx:
         while (stage < 3 /\ pending # {}) {
             temp psn = CHOOSE x \in pending : TRUE;
-            await NoDupPkt(requests[psn]);
+            wait(NoDupPkt(requests[psn]));
             send(requests[psn]);
         }
     }
@@ -276,16 +276,16 @@ protocol {
     thread(Client) ClientReAcquire {
     L_ClientReAcquire:
         while (stage < 3 \/ pending # {}) {
-            await stage = 2 /\ ~holding;
+            wait(stage = 2 /\ ~holding);
             ClientLibRelease(Mac(self), self);
         L_ClientReAcquire2:
-            ClientLibAcquire(Mac(self), self, mode);
+            ClientLibAcquire(Mac(self), self, c_mode);
         }
     }
 
     macro SwitchForwardToAgent(type, pkt) {
         assert(tid \in CLIENT_SET, "SwitchForwardToAgent: no agent");
-        DropSend([type |-> type, src |-> sw, dst |-> tid] @@ pkt);
+        send([type |-> type, src |-> sw, dst |-> tid] @@ pkt);
     }
 
     macro SwitchReplyRequester(type, pkt) {
@@ -425,7 +425,7 @@ protocol {
                     if (pkt.type = ACQUIRE) {
                         SwitchAcquireRetx(pkt);
                         if (mode = SHARED /\ pkt.mode = SHARED) {
-                            s_pkt = [type |-> ACQUIRE, src |-> sw, dst |-> tid] @@ s_pkt;
+                            s_pkt = [type |-> ACQUIRE, src |-> sw, dst |-> tid] @@ pkt;
                         }
                     } elif (pkt.type = RELEASE) {
                         SwitchReleaseRetx(pkt);
@@ -442,7 +442,7 @@ protocol {
                     if (pkt.type = ACQUIRE) {
                         SwitchAcquire(pkt);
                         if (mode = SHARED /\ pkt.mode = SHARED) {
-                            s_pkt = [type |-> ACQUIRE, src |-> sw, dst |-> tid] @@ s_pkt;
+                            s_pkt = [type |-> ACQUIRE, src |-> sw, dst |-> tid] @@ pkt;
                         }
                     } elif (pkt.type = RELEASE) {
                         SwitchRelease(pkt);
@@ -461,10 +461,10 @@ protocol {
 }
 
 property {
-    OneAgent = Cardinality({m \in DOMAIN agents : agents[m] # null}) = 1;
-    OneHolder = Cardinality(Holders) <= 1 \/ \A x \in Holders : c_mode[x] = SHARED;
-    SameMode == \A m \in MACHINE_SET : agents[m] # null => agents[m].mode = mode[sw];
+    OneAgent = Cardinality({m \in DOMAIN agents : agents[m] # null}) <= 1;
+    OneHolder = Cardinality(Holders(0)) <= 1 \/ \A x \in Holders(0) : c_mode[x] = SHARED;
+    SameMode = \A m \in MACHINE_SET : agents[m] # null => agents[m].mode = mode[sw];
     HolderNumCorrect =
-        /\ mode[sw] = FREE => Cardinality(Holders) = 0
-        /\ mode[sw] = EXCLUSIVE => Cardinality(Holders) <= 1;
+        /\ (mode[sw] = FREE => Cardinality(Holders(0)) = 0)
+        /\ (mode[sw] = EXCLUSIVE => Cardinality(Holders(0)) <= 1);
 }

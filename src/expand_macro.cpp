@@ -43,7 +43,7 @@ auto TLABuilder::expandMacro(const string& type, const vector<StmtAST*>& stmts)
                 );
                 const auto& params = std::get<1>(*macro);
                 check(
-                    stmt->exps->size() == std::get<1>(*macro).size(),
+                    stmt->exps->size() == params.size(),
                     format("Macro {} expects {} arguments but {} are provided",
                         *stmt->name, params.size(), stmt->exps->size())
                 );
@@ -60,10 +60,10 @@ auto TLABuilder::expandMacro(const string& type, const vector<StmtAST*>& stmts)
                     arg.insert(arg.begin(), &l);
                     arg.push_back(&r);
                     args[param] = arg;
-                    auto expanded = expandMacro(type, *stmt->name, *std::get<2>(*macro), args);
-                    // Wait for `vector::append_range` in C++23.
-                    res.insert(res.end(), expanded.begin(), expanded.end());
                 }
+                auto expanded = expandMacro(type, *stmt->name, *std::get<2>(*macro), args);
+                // Wait for `vector::append_range` in C++23.
+                res.insert(res.end(), expanded.begin(), expanded.end());
                 break;
             }
             case StmtAST::If:
@@ -100,7 +100,7 @@ auto TLABuilder::expandMacro(const string& type, const vector<StmtAST*>& stmts)
 
 auto TLABuilder::expandMacro(const string& type, const string& name,
     const vector<StmtAST*>& stmts, const MacroArgMap& args) -> vector<StmtAST*> {
-    DEBUG("Enter {} with name={}", __func__, name);
+    DEBUG("Enter {} with\n  name={}\n  args={}", __func__, name, args);
     vector<StmtAST*> res;
     res.reserve(stmts.size());
     auto substitute = [&](const auto& ast) {
@@ -119,6 +119,7 @@ auto TLABuilder::expandMacro(const string& type, const string& name,
                 rg::for_each(*res.back()->assigns, substitute);
                 break;
             case StmtAST::Null:
+                res.push_back(stmt->clone());
                 break;
             case StmtAST::PrimCall:
                 res.push_back(stmt->clone());
@@ -133,13 +134,14 @@ auto TLABuilder::expandMacro(const string& type, const string& name,
                 );
                 const auto& params = std::get<1>(*macro);
                 check(
-                    stmt->exps->size() == std::get<1>(*macro).size(),
+                    stmt->exps->size() == params.size(),
                     format("Macro {} expects {} arguments but {} are provided in macro {}",
                         *stmt->name, params.size(), stmt->exps->size(), name)
                 );
                 MacroArgMap new_args = args;
                 for (size_t i = 0; i < stmt->exps->size(); ++i) {
                     auto exp = stmt->exps->at(i);
+                    substitute(exp);
                     auto param = params[i];
                     check(
                         exp->rule == ExpAST::TLA,
@@ -210,7 +212,7 @@ auto TLABuilder::expandMacro(const string& type, const string& name,
         }
     }
 
-    DEBUG("Exit {} with name={}", __func__, name);
+    DEBUG("Exit {} with\n  name={}\n  args={}", __func__, name, args);
     return res;
 }
 
@@ -225,6 +227,7 @@ void TLABuilder::substituteMacroParam(ExpAST& exp, const MacroArgMap& args) {
                     continue;
                 }
                 // Wait for `vector::append_range` in C++23.
+                DEBUG("Substitute {} with {}", *tla[i], args.at(*tla[i]));
                 auto vec = deep_copy(&args.at(*tla[i]));
                 res.insert(res.end(), vec->begin(), vec->end());
                 delete vec;
@@ -257,9 +260,11 @@ void TLABuilder::substituteMacroParam(AssignAST& assign, const MacroArgMap& args
         );
         ident = *arg[1];
     }
-    if (assign.keys != nullptr) {
-        rg::for_each(*assign.keys, [&](const auto& key) {
-            substituteMacroParam(*key, args);
+    if (assign.vec_keys != nullptr) {
+        rg::for_each(*assign.vec_keys, [&](const auto& keys) {
+            rg::for_each(*keys, [&](const auto& key) {
+                substituteMacroParam(*key, args);
+            });
         });
     }
     substituteMacroParam(*assign.exp, args);
