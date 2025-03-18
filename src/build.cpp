@@ -403,7 +403,7 @@ std::string TLABuilder::buildProcess(const string& type, const string& name,
     return res;
 }
 
-string TLABuilder::buildLabels(const vector<LabelMeta>& label_metas, int indent,
+std::string TLABuilder::buildLabels(const vector<LabelMeta>& label_metas, int indent,
     const string& end_label) {
     string res;
     for (const auto& label_meta : label_metas) {

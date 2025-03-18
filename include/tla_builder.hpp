@@ -98,6 +98,8 @@ private:
     umap<string, uset<string>> type2varNames;
     // (name, params, exp)
     vector<tuple<string, vector<string>, exp_t>> fns;
+    // (name, params, stmts)
+    vector<tuple<string, vector<string>, vector<StmtAST*>*>> macros;
 
     struct LabelMeta {
         string name;
@@ -107,9 +109,6 @@ private:
         TriBool has_recv;
         TriBool has_sendlike;
     };
-    // (name, label)
-    vector<tuple<string, LabelMeta>> macros;
-    uset<string> macroNames;
     // (type, name, labels)
     vector<tuple<string, string, vector<LabelMeta>>> threads;
 
@@ -130,6 +129,10 @@ private:
     void analyzeThread(const string& type, const string& name,
         vector<StmtAST*>& stmts);
     
+    void expandMacro(const string& type, vector<StmtAST*>& stmts);
+    vector<StmtAST*> expandMacro(const string& type, const string& name,
+        const umap<string, vector<string*>>& args);
+
     struct PathMeta {
         TriBool has_recv;
         TriBool has_sendlike;

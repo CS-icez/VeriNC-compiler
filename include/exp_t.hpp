@@ -12,7 +12,7 @@ public:
     exp_t(const std::string& _value) : value(_value) { }
     exp_t(tla_t _value) : value(_value) { }
 
-    bool operator==(const string& s) const {
+    bool operator==(const std::string& s) const {
         if (std::holds_alternative<std::string>(value)) {
             return std::get<std::string>(value) == s;
         } else {
@@ -30,8 +30,8 @@ public:
         }
         // DEBUG("{}: is TLA", __func__);
         const auto& vec = *std::get<tla_t>(value);
-        string res;
-        auto is_ident = [](const string& s) {
+        std::string res;
+        auto is_ident = [](const std::string& s) {
             return s.size() > 0 && !std::isdigit(s[0])
                 && std::ranges::all_of(s, [](char c) {
                     return std::isalnum(c) || c == '_';
@@ -86,7 +86,7 @@ public:
         return exp_t(exp.tla).to_string();
     }
 
-    static std::string to_string(const vector<ExpAST*>& exps) {
+    static std::string to_string(const std::vector<ExpAST*>& exps) {
         auto f = [](const ExpAST* exp) { return to_string(*exp); };
         return join(exps | std::views::transform(f), ", ");
     }

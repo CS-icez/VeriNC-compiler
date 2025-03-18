@@ -9,6 +9,8 @@
 #include "ast.hpp"
 #include "tla_builder.hpp"
 
+using std::string;
+using std::format;
 namespace fs = std::filesystem;
 
 extern int yydebug;
@@ -27,7 +29,7 @@ int main(int argc, char* argv[]) {
 	yydebug = 1; 
 	
 	yyin = fopen(argv[1], "r");
-	check(yyin, std::format("Cannot open spec file {}", argv[1]));
+	check(yyin, format("Cannot open spec file {}", argv[1]));
 
 	SpecAST* ast = nullptr;
 	auto ret = yyparse(ast);
@@ -48,26 +50,26 @@ int main(int argc, char* argv[]) {
 	fs::create_directory("tla");
 	auto tla_out = std::string("tla/") + module + ".tla";
 	std::ofstream tla_os(tla_out);
-	check(tla_os.is_open(), std::format("Cannot open {}", tla_out));
+	check(tla_os.is_open(), format("Cannot open {}", tla_out));
 	tla_os << tla;
 	tla_os.close();
 
 	auto cfg_out = std::string("tla/") + module + ".cfg";
 	std::ofstream cfg_os(cfg_out);
-	check(cfg_os.is_open(), std::format("Cannot open {}", cfg_out));
+	check(cfg_os.is_open(), format("Cannot open {}", cfg_out));
 	cfg_os << cfg;
 	cfg_os.close();
 
-	std::system(std::format("java -cp lib/tla2tools.jar pcal.trans {}", tla_out).c_str());
+	std::system(format("java -cp lib/tla2tools.jar pcal.trans {}", tla_out).c_str());
 	std::ifstream tla_is(tla_out);
-	check(tla_is.is_open(), std::format("Cannot open {}", tla_out));
+	check(tla_is.is_open(), format("Cannot open {}", tla_out));
 	std::string program((std::istreambuf_iterator<char>(tla_is)),
 		std::istreambuf_iterator<char>());
 	tla_is.close();
 
 	auto final_program = TLABuilder::uncommentProperties(program);
 	tla_os.open(tla_out);
-	check(tla_os.is_open(), std::format("Cannot open {}", tla_out));
+	check(tla_os.is_open(), format("Cannot open {}", tla_out));
 	tla_os << final_program;
 	tla_os.close();
 }
