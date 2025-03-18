@@ -4,3 +4,4 @@ set -e
 ./bin/main protocols/netreduce.inc
 ./bin/main protocols/netcache.inc
 ./bin/main protocols/farreach.inc
+./bin/main protocols/fisslock.inc

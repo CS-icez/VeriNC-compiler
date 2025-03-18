@@ -25,7 +25,7 @@ void TLABuilder::analyzeThread(const string& type, const string& name,
     addNewName(name);
 
     // Expand macros.
-    expandMacro(type, stmts);
+    stmts = expandMacro(type, stmts);
 
     // Add a mandatory constraint for retx. Recognition is based on thread name.
     if (toUpper(name).ends_with("RETX")) {
@@ -119,6 +119,7 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
                 label.stmts.push_back(stmt);
                 break;
             case StmtAST::MacroCall:
+                DEBUG("Internal error: macro call {} should have been expanded", *stmt->name);
                 assert(false && "Internal error: macro call should have been expanded");
                 break;
             case StmtAST::Temp:
@@ -361,6 +362,7 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
                 label.stmts.push_back(stmt);
                 break;
             case StmtAST::MacroCall:
+                DEBUG("Internal error: macro call {} should have been expanded", *stmt->name);
                 assert(false && "Internal error: macro call should have been expanded");
                 break;
             case StmtAST::Temp:

@@ -60,7 +60,10 @@ protocol {
             assert(pkt.dst = self, "ClientRecv: incorrect destination");
 
             if (pkt.type = NACK) {
-                unicast([i \in ResendRange(pkt.psn, base) |-> requests[i]]);
+                temp range = ResendRange(pkt.psn, base);
+                if (range # {}) {
+                    unicast([i \in range |-> requests[i]]);
+                }
             }
             elif (pkt.type = REPLY) {
                 assert(pkt.val = res[pkt.psn], "ClientRecv: incorrect value");
@@ -85,10 +88,11 @@ protocol {
 
     thread(Client) ClientRetx {
     L_ClientRetx:
-        while (\E c \in CLIENT_SET : ~__NodeTerminated(c)) {
-            temp range = base..(Minor(base + WINDOW_SIZE, PSN_NUM) - 1);
+        while (self \in active_clients) {
+            temp range = ResendRange(base, base);
+            wait(range # {});
             wait(\A i \in range : ~Contains(__net_buf[sw], requests[i]));
-            unicast([i \in ResendRange(base, base) |-> requests[i]]);
+            unicast([i \in range |-> requests[i]]);
         }
     }
 
@@ -125,7 +129,7 @@ protocol {
                               [] a = dual_agg -> null
                               [] OTHER -> buffer[a, i]
                         ];
-                        temp agg_res = SumSet({buffer[agg, i].val : i \in CLIENT_SET});
+                        temp agg_res = SumSet({buffer[agg, i].val : i \in CLIENT_SET \ {src}}) + pkt.val;
                         // Note here the `src` field is identical, but will not be checked by thread `ClientRecv`.
                         multicast([type |-> REPLY, val |-> agg_res] @@ pkt, CLIENT_SET);
                     } else {

@@ -128,28 +128,29 @@ std::string TLABuilder::toUpper(const string& str) {
     return res;
 }
 
+bool TLABuilder::isIdent(const string& s) {
+    return s.size() > 0 && !std::isdigit(s[0])
+        && rg::all_of(s, [](char c) {
+            return std::isalnum(c) || c == '_';
+        });
+}
+
+bool TLABuilder::isKey(const vector<string*>& tla, size_t i) {
+    // Line 1070 of https://github.com/tlaplus/tlaplus/blob/master/tlatools/org.lamport.tlatools/src/pcal/PlusCal2.tla#L284
+    bool is_last = (i == tla.size() - 1);
+    bool is_first = (i == 0);
+    auto prefix = uset({"["s, ","s});
+    auto suffix = uset({":"s, "|->"s});
+    bool is_field_ref_of_value = (!is_first && *tla[i - 1] == ".");
+    bool is_field_of_struct_literal = (!is_first && !is_last
+        && prefix.contains(*tla[i - 1]) && suffix.contains(*tla[i + 1]));
+    return is_field_ref_of_value || is_field_of_struct_literal;
+}
+
 void TLABuilder::mangleTLA(const string& type, const vector<string*>& tla,
     bool is_cv_decl) {
-    auto is_ident = [](const string& s) {
-        return s.size() > 0 && !std::isdigit(s[0])
-            && std::ranges::all_of(s, [](char c) {
-                return std::isalnum(c) || c == '_';
-            });
-    };
-
     for (size_t i = 0; i < tla.size(); ++i) {
-        if (!is_ident(*tla[i])) {
-            continue;
-        }
-        // Line 1070 of https://github.com/tlaplus/tlaplus/blob/master/tlatools/org.lamport.tlatools/src/pcal/PlusCal2.tla#L284
-        bool is_last = (i == tla.size() - 1);
-        bool is_first = (i == 0);
-        auto prefix = uset({"["s, ","s});
-        auto suffix = uset({":"s, "|->"s});
-        bool is_key = !is_first && ( *tla[i - 1] == "."
-            || (!is_last && prefix.contains(*tla[i - 1]) && suffix.contains(*tla[i + 1]))
-        );
-        if (is_key) {
+        if (!isIdent(*tla[i]) || isKey(tla, i)) {
             continue;
         }
         // Replace `self` with `__Node(self)`.

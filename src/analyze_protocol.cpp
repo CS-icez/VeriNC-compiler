@@ -51,9 +51,15 @@ void TLABuilder::analyze(ProtocolAST* protocol) {
             fns.emplace_back(name, std::move(params), exp->tla);
             break;
         }
-        // case ProtocolAST::Macro:
-        //     analyzeMacro(*protocol->name, *protocol->params, *protocol->stmts);
-        //     break;
+        case ProtocolAST::Macro: {
+            // Collect macro.
+            vector<string> params;
+            // Wait for `rg::to` in C++23.
+            rg::transform(*protocol->params, std::back_inserter(params),
+                [](const auto& s) { return *s; });
+            macros.emplace_back(*protocol->name, std::move(params), protocol->stmts);
+            break;
+        }
         case ProtocolAST::Thread:
             assert(protocol->stmts != nullptr && "Internal error: thread should have statements");
             analyzeThread(*protocol->type->ident, *protocol->name, *protocol->stmts);

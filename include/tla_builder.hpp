@@ -129,9 +129,14 @@ private:
     void analyzeThread(const string& type, const string& name,
         vector<StmtAST*>& stmts);
     
-    void expandMacro(const string& type, vector<StmtAST*>& stmts);
+    using MacroArgMap = umap<string, vector<string*>>;
+    // Outside macro.
+    vector<StmtAST*> expandMacro(const string& type, const vector<StmtAST*>& stmts);
+    // Inside macro.
     vector<StmtAST*> expandMacro(const string& type, const string& name,
-        const umap<string, vector<string*>>& args);
+        const vector<StmtAST*>& stmts, const MacroArgMap& args);
+    void substituteMacroParam(ExpAST& exp, const MacroArgMap& args);
+    void substituteMacroParam(AssignAST& assign, const MacroArgMap& args);
 
     struct PathMeta {
         TriBool has_recv;
@@ -185,6 +190,8 @@ private:
     // void addOurMacros();
     void addOurProperties();
 
+    bool isIdent(const string& s);
+    bool isKey(const vector<string*>& tla, size_t i);
     void mangleTLA(const string& type, const vector<string*>& tla,
         bool is_cv_decl = false);
 

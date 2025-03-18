@@ -1,3 +1,9 @@
+//! Raw pointers rather than smart pointers are used throughout the AST
+//! to get rid of the complex C++ type system.
+//! I believe I have perfectly managed these pointers, but even if I didn't,
+//! all heap memory will be released after the program terminates, and AST
+//! does not involve other resources such as files or network connections.
+
 #pragma once
 #include <algorithm>
 #include <ranges>
@@ -283,9 +289,9 @@ struct StmtAST {
         swap(a.else_stmts, b.else_stmts);
     }
 
-    // StmtAST* clone() const {
-    //     return new StmtAST(*this);
-    // }
+    StmtAST* clone() const {
+        return deep_copy(this);
+    }
 };
 
 struct ExpAST {
@@ -324,9 +330,9 @@ struct ExpAST {
         swap(a.tla, b.tla);
     }
 
-    // ExpAST* clone() const {
-    //     return new ExpAST(*this);
-    // }
+    ExpAST* clone() const {
+        return deep_copy(this);
+    }
 };
 
 struct PropertyAST {
