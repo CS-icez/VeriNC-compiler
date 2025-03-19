@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -Iinclude -std=c++20 -Wall -Wextra
 
-TARGET = bin/main
+TARGET = verinc
 
 INC_DIRS = include
 

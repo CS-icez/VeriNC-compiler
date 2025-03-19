@@ -1,7 +1,8 @@
 set -e
-./bin/main protocols/switchml.inc
-./bin/main protocols/atp.inc
-./bin/main protocols/netreduce.inc
-./bin/main protocols/netcache.inc
-./bin/main protocols/farreach.inc
-./bin/main protocols/fisslock.inc
+./verinc protocols/switchml.inc
+./verinc protocols/atp.inc
+./verinc protocols/netreduce.inc
+./verinc protocols/netcache.inc
+./verinc protocols/farreach.inc
+./verinc protocols/netlock.inc
+./verinc protocols/fisslock.inc
