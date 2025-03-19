@@ -46,7 +46,7 @@ public:
             // DEBUG_EXP(prev);
             const auto& next = i + 1 == vec.size() ? "" : *vec[i + 1];
             // Exception rules:
-            //   1. ident.field
+            //   1. ident.field or !.field
             //   2. (exp)
             //   3. [exp]
             //   4. {exp}
@@ -58,7 +58,7 @@ public:
             //  10. =>
             //  11. [exp][exp]
             bool add_space = (i > 0)
-                && prev != "." && curr != "."
+                && prev != "." && curr != "." && prev != "!."
                 && prev != "(" && curr != ")"
                 && prev != "[" && curr != "]"
                 && prev != "{" && curr != "}"
