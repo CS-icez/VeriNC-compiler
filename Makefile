@@ -25,12 +25,13 @@ LEX_GEN = $(SRC_DIRS)/scanner.cpp
 YACC_GEN = $(SRC_DIRS)/parser.cpp $(SRC_DIRS)/parser.hpp
 
 all: release
-
-release: $(TARGET)
-debug: $(TARGET)
+release: build
+debug: build
 debug: LEX_FLAGS += -d
 debug: YACC_FLAGS += -Wcounterexamples --debug
 debug: CXXFLAGS += -DDEBUG_ON
+
+build: $(TARGET)
 
 $(TARGET): $(OBJS)
 	@mkdir -p $(dir $@)
@@ -61,8 +62,19 @@ $(OBJ_DIR)/parser.o: $(SRC_DIRS)/parser.cpp
 clean:
 	rm -rf $(OBJ_DIR) $(TARGET) $(LEX_GEN) $(YACC_GEN)
 
-protocol:
-	make release
+protocol: build
 	find protocols -type f -name "*.inc" | xargs -I {} ./verinc {} -o tla
+	find tla -type f -name '*.old' -delete
 
-.PHONY: all clean debug release protocol
+test: build
+	find tests -type f -name "*.inc" | xargs -I {} sh -c './verinc {} -o $$(dirname {})'
+	find tests -type f -name '*.cfg' -delete
+	find tests -type f -name '*.old' -delete
+
+clean_tla:
+	find . -type f -name '*.tla' -not -path './reference/*' -delete
+	find . -type f -name '*.cfg' -not -path './reference/*' -delete
+	find . -type f -name '*.old' -delete
+	find . -type d -name 'states' -exec rm -rf {} +
+
+.PHONY: all clean debug release build protocol test clean_tla
