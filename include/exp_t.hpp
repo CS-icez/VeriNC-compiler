@@ -1,4 +1,5 @@
 #pragma once
+#include <cassert>
 #include <string>
 #include <variant>
 #include <vector>
@@ -22,13 +23,9 @@ public:
     }
 
     std::string to_string() const {
-        // DEBUG("Enter {}", __func__);
         if (std::holds_alternative<std::string>(value)) {
-            // DEBUG("{}: is string", __func__);
-            // DEBUG("Exit {}", __func__);
             return std::get<std::string>(value);
         }
-        // DEBUG("{}: is TLA", __func__);
         const auto& vec = *std::get<tla_t>(value);
         std::string res;
         auto is_ident = [](const std::string& s) {
@@ -39,11 +36,8 @@ public:
         };
 
         for (size_t i = 0; i < vec.size(); ++i) {
-            // DEBUG_EXP(i);
             const auto& curr = *vec[i];
-            // DEBUG_EXP(curr);
             const auto& prev = i > 0 ? *vec[i - 1] : "";
-            // DEBUG_EXP(prev);
             const auto& next = i + 1 == vec.size() ? "" : *vec[i + 1];
             // Exception rules:
             //   1. ident.field or !.field
@@ -74,9 +68,6 @@ public:
             }
             res += curr;
         }
-        // DEBUG_EXP(vec);
-        // DEBUG_EXP(res);
-        // DEBUG("Exit {}", __func__);
         return res;
     }
 

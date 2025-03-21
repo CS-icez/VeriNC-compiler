@@ -1,12 +1,8 @@
 #include "tla_builder.hpp"
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <format>
-#include <iostream>
 #include <ranges>
-#include <regex>
-#include <stdexcept>
 #include "make_ast.hpp"
 #include "debug.hpp"
 using std::format;
@@ -41,7 +37,6 @@ void TLABuilder::analyzeThread(const string& type, const string& name,
     }
 
     threads.emplace_back(type, name, analyzeThreadStmts(type, stmts));
-    // analyzeThreadStmts(type, stmts);
     DEBUG("Thread {} analyzed", name);
 }
 
@@ -68,8 +63,6 @@ auto TLABuilder::analyzeThreadStmts(const string& type, vector<StmtAST*>& stmts)
         //   `if (cond) {} else { receive(); send(pkt); }`
         // is allowed.
 
-        // DEBUG_EXP(path.has_recv);
-        // DEBUG_EXP(path.has_sendlike);
         // check(
         //     (path.has_recv == true && path.has_sendlike == true)
         //     || path.has_recv == false
@@ -168,7 +161,6 @@ TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST& stmt
     PathMeta path, LabelMeta& label_meta) {
     DEBUG("Enter {}", __func__);
     assert(stmt.rule == StmtAST::If && "Internal error: not an if statement");
-    DEBUG_EXP(path.has_recv);
 
     check(
         stmt.exp->rule == ExpAST::TLA,
@@ -213,9 +205,6 @@ TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST& stmt
         res_path |= path;
     }
 
-    DEBUG_EXP(path.has_recv);
-    DEBUG_EXP(path.has_sendlike);
-    DEBUG_EXP(branch_has_sendlike);
     assert((path.has_recv != true || !path.has_sendlike.is_both())
         && "Internal error: such condition should have been recursively fixed");
     bool cond = path.has_recv == true && path.has_sendlike == false
@@ -230,7 +219,6 @@ TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST& stmt
         }
         auto branch_num = branch_has_sendlike.size();
         for (size_t i = 0; i < branch_num; ++i) {
-            DEBUG_EXP(branch_has_sendlike);
             assert(!branch_has_sendlike[i].is_both()
                 && "Internal error: such condition should have been recursively fixed");
             auto& branch_labels = label_meta.branches[label_meta.branches.size() - branch_num + i];
@@ -273,8 +261,6 @@ TLABuilder::PathMeta TLABuilder::analyzeWhileStmt(const string& type, StmtAST& s
 auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
     PathMeta path, bool has_temp) -> pair<PathMeta, vector<LabelMeta>> {
     DEBUG("Enter {}", __func__);
-    DEBUG_EXP(path.has_recv);
-    DEBUG_EXP(path.has_sendlike);
     LabelMeta label;
     vector<LabelMeta> labels;
     const string first = "__first_label";
@@ -293,8 +279,6 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
             format("No statement follows label {}", label.name)
         );
         // TODO: correct?
-        // DEBUG_EXP(path.has_recv);
-        // DEBUG_EXP(path.has_sendlike);
         // check(
         //     (path.has_recv == true && path.has_sendlike == true)
         //         || path.has_recv == false
@@ -385,12 +369,12 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
                 break;
             case StmtAST::While:
                 check_after_exit();
-                // check(
-                //     !has_temp,
-                //     "While loops are not allowed after declaring temporary values. "
-                //     "Try setting a breakpoint before the while loop, "
-                //     "or declaring temporary values inside the while loop."
-                // );
+                check(
+                    !has_temp,
+                    "While loops are not allowed after declaring temporary values. "
+                    "Try setting a breakpoint before the while loop, "
+                    "or declaring temporary values inside the while loop."
+                );
                 check(
                     it != stmts.begin() && (*(it - 1))->rule == StmtAST::Breakpoint,
                     "`while` statement must be preceded immediately by a breakpoint"
@@ -412,8 +396,6 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
     }
 
     collect_last_label();
-    DEBUG_EXP(path.has_recv);
-    DEBUG_EXP(path.has_sendlike);
     DEBUG("Exit {}", __func__);
     return {path, labels};
 }
@@ -421,7 +403,6 @@ auto TLABuilder::analyzeBranch(const string& type, vector<StmtAST*>& stmts,
 void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assigns,
     PathMeta& path) {
     DEBUG("Enter {}", __func__);
-    DEBUG_EXP(path.has_recv);
     assert(!assigns.empty() && "Ill-formed AST: empty assignment list");
 
     // Check that elements of `assigns` have the same `ident` field.
@@ -474,7 +455,6 @@ void TLABuilder::analyzeAssignStmt(const string& type, vector<AssignAST*>& assig
                 assert(false && "Internal error: unknown expression type");
         }
     }
-    DEBUG_EXP(path.has_recv);
     DEBUG("Exit {}", __func__);
 }
 

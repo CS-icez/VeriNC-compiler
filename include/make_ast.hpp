@@ -2,7 +2,6 @@
 #include <string>
 #include <tuple>
 #include <type_traits>
-#include <utility>
 #include <vector>
 
 template <typename> struct is_tuple : std::false_type {};
@@ -31,9 +30,6 @@ T* make_ast(Args&&... args) {
     };
     return std::apply(f, combined);
 }
-
-// template <typename T, typename... Args>
-// std::vector<T*>* make_vec(Args... args);
 
 template <typename T>
 std::vector<T*>* make_vec(T* arg1, T* arg2) {

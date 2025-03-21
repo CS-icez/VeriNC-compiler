@@ -1,15 +1,9 @@
 #pragma once
 #include "ast.hpp"
-#include <algorithm>
-#include <cassert>
-#include <iostream>
-#include <ranges>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
-#include "debug.hpp"
 #include "exp_t.hpp"
-#include "join.hpp"
 #include "tribool.hpp"
 
 class TLABuilder {
@@ -124,8 +118,6 @@ private:
 
     // Analyze constant/variable declaration.
     void analyzeCV(const string& type, bool is_const, AssignAST* assign);
-    // void analyzeMacro(const string& name, const vector<string>& params,
-    //     vector<StmtAST*>& stmts);
     void analyzeThread(const string& type, const string& name,
         vector<StmtAST*>& stmts);
     
@@ -187,7 +179,6 @@ private:
     void addOurConstants();
     void addOurVariables();
     void addOurFns();
-    // void addOurMacros();
     void addOurProperties();
 
     bool isIdent(const string& s);

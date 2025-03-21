@@ -1,13 +1,8 @@
 #include "tla_builder.hpp"
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <format>
-#include <iostream>
 #include <ranges>
-#include <regex>
-#include <stdexcept>
-#include "make_ast.hpp"
 #include "debug.hpp"
 using std::format;
 using namespace std::string_literals;
@@ -154,8 +149,6 @@ std::string TLABuilder::findNext(const string& src, const string& dst,
     auto success_cnt = 0;
     auto res = null;
     // Enumerate all possible next hops.
-    DEBUG_EXP(src);
-    DEBUG_EXP(links[src]);
     for (const auto& next : links[src]) {
         if (nexts[next][dst] != null) {
             ++success_cnt;

@@ -4,7 +4,6 @@
 %code requires {
 
 #include <cstdio>
-#include <iostream>
 #include <string>
 #include <vector>
 #include <algorithm>

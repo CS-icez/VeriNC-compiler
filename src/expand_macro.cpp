@@ -1,15 +1,10 @@
 #include "tla_builder.hpp"
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <format>
-#include <iostream>
 #include <ranges>
-#include <regex>
-#include <stdexcept>
 #include "make_ast.hpp"
 #include "debug.hpp"
-using std::endl;
 using std::format;
 using namespace std::string_literals;
 namespace rg = std::ranges;
@@ -55,7 +50,6 @@ auto TLABuilder::expandMacro(const string& type, const vector<StmtAST*>& stmts)
                         exp->rule == ExpAST::TLA,
                         "Arguments of macro calls should not involve primitive calls"
                     );
-                    // mangleTLA(type, *exp->tla);
                     auto arg = *exp->tla;
                     arg.insert(arg.begin(), &l);
                     arg.push_back(&r);

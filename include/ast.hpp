@@ -9,7 +9,6 @@
 #include <ranges>
 #include <string>
 #include <vector>
-#include "debug.hpp"
 
 struct SpecAST;
 struct SectionAST;

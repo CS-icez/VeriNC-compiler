@@ -1,13 +1,8 @@
 #include "tla_builder.hpp"
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <format>
-#include <iostream>
 #include <ranges>
-#include <regex>
-#include <stdexcept>
-#include "make_ast.hpp"
 #include "debug.hpp"
 using std::format;
 using namespace std::string_literals;
@@ -383,8 +378,7 @@ std::string TLABuilder::buildMacros() {
 
 std::string TLABuilder::buildProcess(const string& type, const string& name,
     const vector<LabelMeta>& label_metas) {
-    DEBUG("Enter {}", __func__);
-    DEBUG_EXP(name);
+    DEBUG("Enter {} with name={}", __func__, name);
     string res;
     res += format(
         R"!!(  fair+ process ({} \in ({} \X {{"{}"}})) {{)!!" "\n",
@@ -397,7 +391,7 @@ std::string TLABuilder::buildProcess(const string& type, const string& name,
         "      __active_threads[__Node(self)] := @ - 1;\n"
         "    };\n"
         "  }\n";
-    DEBUG("Exit {}", __func__);
+    DEBUG("Exit {} with name={}", __func__, name);
     return res;
 }
 
@@ -412,8 +406,7 @@ std::string TLABuilder::buildLabels(const vector<LabelMeta>& label_metas, int in
 
 std::string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
     const string& end_label) {
-    DEBUG("Enter {}", __func__);
-    DEBUG_EXP(label_meta.name);
+    DEBUG("Enter {} with name={}", __func__, label_meta.name);
     assert(indent >= 4 && "Internal error: invalid indentation number");
 
     auto spaces = string(indent, ' ');
@@ -572,7 +565,7 @@ std::string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
         res += spaces + "};\n";
     }
 
-    DEBUG("Exit {}", __func__);
+    DEBUG("Exit {} with name={}", __func__, label_meta.name);
     return res;
 }
 
@@ -582,7 +575,6 @@ std::string TLABuilder::buildCFG() {
     res += "SPECIFICATION Spec\n";
     res += "CONSTANTS\n";
     for (const auto& [name, exp] : configs) {
-        DEBUG_EXP(name);
         res += format("  {} = {}\n", name, exp.to_string());
     }
     if (!invariants.empty()) {

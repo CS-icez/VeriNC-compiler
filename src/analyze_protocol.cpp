@@ -1,13 +1,8 @@
 #include "tla_builder.hpp"
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <format>
-#include <iostream>
 #include <ranges>
-#include <regex>
-#include <stdexcept>
-#include "make_ast.hpp"
 #include "debug.hpp"
 using std::format;
 using namespace std::string_literals;
@@ -94,7 +89,6 @@ void TLABuilder::analyzeCV(const string& type, bool is_const, AssignAST* assign)
         format("RHS of {} declaration {} should not involve primitive calls", cv, name)
     );
     // Replace `self` with `__n`.
-    // *exp->tla = std::regex_replace(*exp->tla, std::regex("self"), "__n");
     rg::for_each(*exp->tla, [](const auto& s) {
         if (*s == "self") {
             *s = "__n";
