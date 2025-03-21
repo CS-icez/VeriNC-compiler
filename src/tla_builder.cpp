@@ -99,6 +99,12 @@ void TLABuilder::analyze(SpecAST* spec) {
     addOurProperties();
     
     // Analyze protocol sections.
+    check(
+        rg::any_of(protocols, [](auto protocol) {
+            return protocol->rule == ProtocolAST::Thread;
+        }),
+        "No thread is declared, thus nothing to run"
+    );
     for (auto protocol : protocols) {
         analyze(protocol);
     }

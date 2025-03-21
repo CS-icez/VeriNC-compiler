@@ -221,7 +221,6 @@ void TLABuilder::substituteMacroParam(ExpAST& exp, const MacroArgMap& args) {
                     continue;
                 }
                 // Wait for `vector::append_range` in C++23.
-                DEBUG("Substitute {} with {}", *tla[i], args.at(*tla[i]));
                 auto vec = deep_copy(&args.at(*tla[i]));
                 res.insert(res.end(), vec->begin(), vec->end());
                 delete vec;

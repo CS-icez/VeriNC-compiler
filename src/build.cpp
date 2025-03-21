@@ -15,15 +15,11 @@ std::string TLABuilder::buildTLA() {
     res += "EXTENDS Integers, Sequences, FiniteSets, "
         "TLC, Bitwise, FiniteSetsExt, SequencesExt, Functions\n\n";
 
-    DEBUG("{}: finish module header", __func__);
-
     res += "CONSTANTS\n";
     for (const auto& [name, tla] : configs) {
         res += format("  {},\n", name);
     }
     res[res.length() - 2] = '\n';
-
-    DEBUG("{}: finish constants", __func__);
 
     res += "(* --fair algorithm main {\n";
 
@@ -45,8 +41,6 @@ std::string TLABuilder::buildTLA() {
         }
     }
     res += "\n";
-
-    DEBUG("{}: finish variables", __func__);
 
     res += "  define {\n";
 
@@ -73,12 +67,8 @@ std::string TLABuilder::buildTLA() {
     }
     res += "  }\n\n\n";
 
-    DEBUG("{}: finish define block", __func__);
-
     res += buildMacros();
     res += "\n";
-
-    DEBUG("{}: finish macros", __func__);
 
     for (const auto& [type, name, labels] : threads) {
         res += "\n";

@@ -4,7 +4,9 @@ obj
 scanner.cpp
 parser.hpp
 parser.cpp
-tla
+*.tla
+*.cfg
+*.old
 reference
 tla2tools.jar
 *Zone.Identifier

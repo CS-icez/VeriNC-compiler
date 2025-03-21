@@ -67,7 +67,6 @@ void TLABuilder::analyze(TopologyAST* topology) {
                             format("Declare a link with unknown node {}", *dst)
                         );
                         check(*src != *dst, format("Declare a self-link of {}", *src));
-                        DEBUG("Link {} -- {}", *src, *dst);
                         links[*src].insert(*dst);
                         links[*dst].insert(*src);
                         // Neighbors are naturally next hops.
@@ -133,6 +132,7 @@ void TLABuilder::completeNexts() {
     DEBUG("Completing routing tables...");
     for (auto src : nodes) {
         for (auto dst : nodes) {
+            visited.insert({src, dst});
             findNext(src, dst, visited);
         }
     }
@@ -171,6 +171,5 @@ std::string TLABuilder::findNext(const string& src, const string& dst,
         src, dst
     ));
     nexts[src][dst] = res;
-    DEBUG("Next hop from {} to {} is {}", src, dst, res);
     return res;
 }
