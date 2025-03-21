@@ -1,5 +1,8 @@
 CXX = g++
+
 CXXFLAGS = -Iinclude -std=c++20 -Wall -Wextra
+LEX_FLAGS =
+YACC_FLAGS =
 
 TARGET = verinc
 
@@ -21,7 +24,13 @@ DEPS = $(OBJS:.o=.d)
 LEX_GEN = $(SRC_DIRS)/scanner.cpp
 YACC_GEN = $(SRC_DIRS)/parser.cpp $(SRC_DIRS)/parser.hpp
 
-all: $(TARGET)
+all: release
+
+release: $(TARGET)
+debug: $(TARGET)
+debug: LEX_FLAGS += -d
+debug: YACC_FLAGS += -Wcounterexamples --debug
+debug: CXXFLAGS += -DDEBUG_ON
 
 $(TARGET): $(OBJS)
 	@mkdir -p $(dir $@)
@@ -33,11 +42,11 @@ $(OBJ_DIR)/%.o: $(SRC_DIRS)/%.cpp
 
 $(LEX_GEN): $(LEX_SRCS) $(YACC_GEN)
 	@mkdir -p $(dir $@)
-	flex -d -o $@ $<
+	flex $(LEX_FLAGS) -o $@ $<
 
 $(YACC_GEN): $(YACC_SRCS) $(INC_DIRS)/ast.hpp $(INC_DIRS)/make_ast.hpp
 	@mkdir -p $(dir $@)
-	bison -Wcounterexamples --debug -d -o $@ $<
+	bison $(YACC_FLAGS) -d -o $@ $<
 
 $(OBJ_DIR)/scanner.o: $(LEX_GEN)
 	@mkdir -p $(dir $@)
@@ -52,4 +61,8 @@ $(OBJ_DIR)/parser.o: $(SRC_DIRS)/parser.cpp
 clean:
 	rm -rf $(OBJ_DIR) $(TARGET) $(LEX_GEN) $(YACC_GEN)
 
-.PHONY: all clean
+protocol:
+	make release
+	find protocols -type f -name "*.inc" | xargs -I {} ./verinc {} -o tla
+
+.PHONY: all clean debug release protocol

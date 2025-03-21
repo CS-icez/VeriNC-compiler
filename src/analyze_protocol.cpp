@@ -9,8 +9,6 @@
 #include <stdexcept>
 #include "make_ast.hpp"
 #include "debug.hpp"
-using std::cout;
-using std::endl;
 using std::format;
 using namespace std::string_literals;
 namespace rg = std::ranges;

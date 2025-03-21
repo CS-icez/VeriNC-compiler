@@ -95,8 +95,8 @@ namespace std {
         }
     };
 }
-    
-#if 1
+
+#ifdef DEBUG_ON
 #define DEBUG(fmt, ...) \
     std::cout << std::format(fmt, ##__VA_ARGS__) << std::endl
 #define COLOR_VAR "\033[36m"

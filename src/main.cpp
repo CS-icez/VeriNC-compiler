@@ -7,10 +7,12 @@
 #include <iostream>
 #include <string>
 #include "ast.hpp"
+#include "debug.hpp"
 #include "tla_builder.hpp"
 
 using std::string;
 using std::format;
+using namespace std::string_literals;
 namespace fs = std::filesystem;
 
 extern int yydebug;
@@ -24,9 +26,14 @@ static void check(bool cond, const string& msg) {
 }
 
 int main(int argc, char* argv[]) {
-	check(argc == 2, "Usage: ./bin/main <spec-file>");
+	check(
+		argc == 4 && string(argv[2]) == "-o",
+		"Usage: ./bin/main <spec-file> -o <out-dir>"
+	);
 
+	#ifdef DEBUG_ON
 	yydebug = 1; 
+	#endif
 	
 	yyin = fopen(argv[1], "r");
 	check(yyin, format("Cannot open spec file {}", argv[1]));
@@ -36,40 +43,37 @@ int main(int argc, char* argv[]) {
 	check(!ret, "Parsing failed");
 	fclose(yyin);
 
-	std::cout << "Parsed successfully" << std::endl;
+	DEBUG("Parsed successfully");
 
-	auto file = std::string(argv[1]);
-	auto module = file.substr(0, file.find_last_of('.'));
-	// string::npos == -1, so works fine without '/' in `module`.
-	module = module.substr(module.find_last_of('/') + 1);
+	auto module = fs::path(argv[1]).stem().string();
+	DEBUG_EXP(module); 
 	TLABuilder builder(ast, module);
 	auto [tla, cfg] = builder.build();
 
-	std::cout << "Built successfully" << std::endl;
+	DEBUG("Built successfully");
 
-	fs::create_directory("tla");
-	auto tla_out = std::string("tla/") + module + ".tla";
-	std::ofstream tla_os(tla_out);
-	check(tla_os.is_open(), format("Cannot open {}", tla_out));
-	tla_os << tla;
-	tla_os.close();
+	auto out_dir = fs::path(argv[3]);
+	fs::create_directory(out_dir);
 
-	auto cfg_out = std::string("tla/") + module + ".cfg";
-	std::ofstream cfg_os(cfg_out);
-	check(cfg_os.is_open(), format("Cannot open {}", cfg_out));
-	cfg_os << cfg;
-	cfg_os.close();
+	auto tla_out = (out_dir / module).concat(".tla");
+	//! This is graceful, but didn't check open status. The same for the following.
+	std::ofstream(tla_out) << tla;
 
-	std::system(format("java -cp lib/tla2tools.jar pcal.trans {}", tla_out).c_str());
-	std::ifstream tla_is(tla_out);
-	check(tla_is.is_open(), format("Cannot open {}", tla_out));
-	std::string program((std::istreambuf_iterator<char>(tla_is)),
-		std::istreambuf_iterator<char>());
-	tla_is.close();
+	auto cfg_out = (out_dir / module).concat(".cfg");
+	std::ofstream(cfg_out) << cfg;
+
+	auto flags = ""s;
+	#ifndef DEBUG_ON
+	flags += "> /dev/null 2>&1";
+	#endif
+	auto cmd = format("java -cp lib/tla2tools.jar pcal.trans {} {}", tla_out.string(), flags);
+	std::system(cmd.c_str());
+	auto tla_is = std::ifstream(tla_out);
+	std::string program{
+		std::istreambuf_iterator<char>(tla_is),
+		std::istreambuf_iterator<char>()
+	};
 
 	auto final_program = TLABuilder::uncommentProperties(program);
-	tla_os.open(tla_out);
-	check(tla_os.is_open(), format("Cannot open {}", tla_out));
-	tla_os << final_program;
-	tla_os.close();
+	std::ofstream(tla_out) << final_program;
 }

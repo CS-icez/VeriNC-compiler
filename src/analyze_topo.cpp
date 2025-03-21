@@ -9,8 +9,6 @@
 #include <stdexcept>
 #include "make_ast.hpp"
 #include "debug.hpp"
-using std::cout;
-using std::endl;
 using std::format;
 using namespace std::string_literals;
 namespace rg = std::ranges;
@@ -137,13 +135,13 @@ namespace std {
 
 void TLABuilder::completeNexts() {
     uset<pair<string, string>> visited;
-    std::cout << "Completing routing tables..." << std::endl;
+    DEBUG("Completing routing tables...");
     for (auto src : nodes) {
         for (auto dst : nodes) {
             findNext(src, dst, visited);
         }
     }
-    std::cout << "Routing tables completed" << std::endl;
+    DEBUG("Routing tables completed");
 }
 
 std::string TLABuilder::findNext(const string& src, const string& dst,

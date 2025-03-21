@@ -45,7 +45,7 @@ void TLABuilder::addNewName(const string& name, bool is_user_defined) {
 
 auto TLABuilder::build() -> pair<string, string> {
     analyze(spec);
-    std::cout << "Analysis completed" << std::endl;
+    DEBUG("Analysis completed");
     return {buildTLA(), buildCFG()};
 }
 
