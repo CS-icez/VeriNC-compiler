@@ -29,7 +29,7 @@ Type ::= IDENT
 RouteEntry ::= Comma<IDENT> ":" IDENT ";"
 Protocol ::= ("var" | "const") "(" (Type | "all") ")" Comma<Assign | Choice> ";"
            | "fn" IDENT "(" Comma<IDENT> ")" "=" Exp ";"
-           | "macro" "(" Comma<IDENT>? ")" "{" Stmt+ "}"
+           | "macro" IDENT "(" Comma<IDENT>? ")" "{" Stmt+ "}"
            | "thread" "(" Type ")" IDENT "{" Stmt+ "}"
 Stmt ::= Breakpoint ":"
        | Comma<Assign> ";"
@@ -64,5 +64,3 @@ Ctl ::= Exp | "[]" Exp | "<>" Exp | ...
 Note that the above grammar only defines the basic syntax requirements of the language. Finer-grained constraints are enforced by the compiler. For example, `Exp` can be expanded to a primitive call, but it is not allowed in most expressions. The left hand side of `Assign` can be expanded to a dictionary element access, but it is only allowed in assignment statements.
 
 TODO: reused TLA+ notations in prototype for literal values, operators and functions on them, expressions, and CTL formulas.
-
-TODO: allowing nondeterminism (`in`) in temporary value declaration statements.
