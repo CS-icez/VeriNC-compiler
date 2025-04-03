@@ -61,6 +61,15 @@ Property ::= IDENT "=" Ctl ";"
 Ctl ::= Exp | "[]" Exp | "<>" Exp | ...
 ```
 
-Note that the above grammar only defines the basic syntax requirements of the language. Finer-grained constraints are enforced by the compiler. For example, `Exp` can be expanded to a primitive call, but it is not allowed in most expressions. The left hand side of `Assign` can be expanded to a dictionary element access, but it is only allowed in assignment statements.
+## Explanation
 
-TODO: reused TLA+ notations in prototype for literal values, operators and functions on them, expressions, and CTL formulas.
+The above grammar only defines the basic syntax requirements of the language. Finer-grained constraints are enforced by the compiler. For example, `Exp` can be expanded to a primitive call, but it is not allowed in most expressions. The left hand side of `Assign` can be expanded to a dictionary element access, but it is only allowed in assignment statements.
+
+We reused the expression grammar of TLA+ in the current compiler, i.e., the `Exp` described above is just a feature display, not the real grammar in use.
+
+Explanation of some grammar details:
+
+- When declaring a node, an optional value can be attached.
+- `--` denotes a full connection between operands. E.g., `a, b -- c, d -- e, f` establishes 8 links: a-c, a-d, b-c, b-d, c-e, c-f, d-e, d-f.
+- An example route table: `route (src1, src2) {dst1, dst2: next1; dst3: next2; }`.
+- Declaring a variable/constant for node type `all` means declaring a global variable/constant, i.e., visible to all nodes.
