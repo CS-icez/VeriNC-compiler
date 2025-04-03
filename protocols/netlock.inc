@@ -43,11 +43,11 @@ protocol {
     L_ClientAcquire:
         assert(~holding, "ClientApp: logic error");
         acquire_req = [type |-> ACQUIRE, src |-> self, dst |-> sw, mode |-> mode,
-            meta |-> ("flag" :> 0)];
+            meta |-> ("flag" :> 0), id |-> (self - 1) * 2];
         send(acquire_req);
     L_ClientRelease:
         wait(holding);
-        release_req = [type |-> RELEASE, src |-> self, dst |-> sw, meta |-> ("flag" :> 0)];
+        release_req = [type |-> RELEASE, src |-> self, dst |-> sw, meta |-> ("flag" :> 0), id |-> (self - 1) * 2 + 1];
         send(release_req);
         holding = FALSE;
     }
@@ -72,11 +72,9 @@ protocol {
     L_ClientRetx:
         while (TRUE) {
             if (release_req # null) {
-                wait(~Contains(__net_buf[sw], release_req));
                 send(release_req);
             }
             elif (~holding /\ acquire_req # null) {
-                wait(~Contains(__net_buf[sw], acquire_req));
                 send(acquire_req);
             }
             else {

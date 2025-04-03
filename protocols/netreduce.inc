@@ -30,6 +30,7 @@ protocol {
     const(Client) prev = (self + CLIENT_NUM - 1) % CLIENT_NUM;
     const(Client) next = (self + 1) % CLIENT_NUM;
     const(Client) requests = [i \in PSN_SET |-> [
+        id |-> self * REQ_NUM + i,
         src |-> self,
         dst |-> (self + 1) % CLIENT_NUM,
         msg_id |-> i \div MSG_SIZE,
@@ -89,10 +90,7 @@ protocol {
     thread(Client) ClientRetx {
     L_ClientRetx:
         while (self \in active_clients) {
-            temp range = ResendRange(base, base);
-            wait(range # {});
-            wait(\A i \in range : ~Contains(__net_buf[sw], requests[i]));
-            unicast([i \in range |-> requests[i]]);
+            send(requests[base]);
         }
     }
 

@@ -78,8 +78,6 @@ protocol {
             temp s = 1..(base - 1) \cap {i \in REQ_SET : replies[i] = null};
             wait(s # {});
             temp psn = CHOOSE i \in s : TRUE; // Choose the minium psn.
-            wait(\A i \in DOMAIN __net_buf[sw] : __net_buf[sw][i].id # requests[psn].id);
-            wait(\A i \in DOMAIN __net_buf[svr] : __net_buf[svr][i].id # requests[psn].id);
             send(requests[psn]);
             // Trigger __CheckCacheConsistency?
         }
@@ -186,8 +184,7 @@ protocol {
     L_ServerRetx:
         while (\E c \in CLIENT_SET \cup CONTROLLER_SET : ~__NodeTerminated(c)) {
             wait(retx_msg # null);
-            wait(~Contains(__net_buf[sw], retx_msg));
-            send(retx_msg);
+            send("id" :> -1 @@ retx_msg);
         }
     }
 }

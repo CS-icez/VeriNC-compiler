@@ -21,6 +21,7 @@ protocol {
     var(all) max_jobs = MAX_JOBS;
 
     const(Client) requests = [i \in REQ_SET |-> [
+        id |-> self * REQ_NUM + i,
         value |-> req_val[self, i],
         psn |-> i,
         bitmap |-> 2 ^ self,
@@ -74,7 +75,6 @@ protocol {
     thread(Client) ClientRetx {
     L_ClientRetx:
         while (epsn <= REQ_NUM) {
-            wait(\E i \in REQ_SET : ~Contains(__net_buf[sw], requests[i]));
             send("resend" :> TRUE @@ requests[epsn]);
         }
     }

@@ -41,10 +41,10 @@ protocol {
     var(Controller) stage = 0;
     var(Controller) msgs = <<
         [psn |-> 1, type |-> REQ, op |-> READ, src |-> self, dst |-> svr, cached |-> FALSE, id |-> -1],
-        [psn |-> 2, type |-> CMD, cmd |-> "admit", src |-> self, dst |-> sw, id |-> -1],
-        [psn |-> 3, type |-> CMD, cmd |-> "pre_evict", src |-> self, dst |-> sw, id |-> -1],
-        [psn |-> 4, type |-> REQ, op |-> WRITE, src |-> self, dst |-> svr, cached |-> FALSE, id |-> -1],
-        [psn |-> 5, type |-> CMD, cmd |-> "evict", src |-> self, dst |-> sw, id |-> -1]
+        [psn |-> 2, type |-> CMD, cmd |-> "admit", src |-> self, dst |-> sw, id |-> -2],
+        [psn |-> 3, type |-> CMD, cmd |-> "pre_evict", src |-> self, dst |-> sw, id |-> -3],
+        [psn |-> 4, type |-> REQ, op |-> WRITE, src |-> self, dst |-> svr, cached |-> FALSE, id |-> -4],
+        [psn |-> 5, type |-> CMD, cmd |-> "evict", src |-> self, dst |-> sw, id |-> -5]
     >>;
     var(Controller) NUM_STAGES = Len(msgs);
 
@@ -87,8 +87,6 @@ protocol {
             temp s = 1..(base - 1) \cap {i \in REQ_SET : replies[i] = null};
             wait(s # {});
             temp psn = CHOOSE i \in s : TRUE; // Choose the minium psn.
-            wait(\A i \in DOMAIN __net_buf[sw] : __net_buf[sw][i].id # requests[psn].id);
-            wait(\A i \in DOMAIN __net_buf[svr] : __net_buf[svr][i].id # requests[psn].id);
             send(requests[psn]);
             // Trigger __CheckCacheConsistency?
         }
@@ -120,7 +118,6 @@ protocol {
     L_CtrlerRetx:
         while (stage <= NUM_STAGES) {
             wait(stage > 0);
-            wait(~Contains(__net_buf[sw], msgs[stage]) /\ ~Contains(__net_buf[svr], msgs[stage]));
             send(msgs[stage]);
         }
     }

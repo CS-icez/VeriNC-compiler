@@ -132,8 +132,7 @@ std::string TLABuilder::buildMacros() {
 
     // TODO: a unified way to implement these sending primitives?
 
-    // __Send
-    m = "macro __Send(__pkt) {\n"
+    m = "macro __Send_NoDup(__pkt) {\n"
         "  with (__h = __next_hop[__Node(self), __pkt.dst]) {\n"
         "    either {\n"
         "      await __max_out_of_order > 0;\n"
@@ -149,6 +148,32 @@ std::string TLABuilder::buildMacros() {
         "    }\n"
         "    or {\n"
         "      __net_buf[__h] := Append(@, __pkt);\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
+    res += add_indent(m) + "\n";
+
+    // TODO: a less hacking and more general way to implement duplication control.
+    // __Send
+    m = "macro __Send(__pkt) {\n"
+        "  with (\n"
+        "    has_dup = \n"
+        "      /\\ \"id\" \\in DOMAIN __pkt\n"
+        "      /\\ \\E __n \\in NODE_SET : \\E __i \\in DOMAIN __net_buf[__n] :\n"
+        "        \"id\" \\in DOMAIN __net_buf[__n][__i] \\/ __net_buf[__n][__i].id = __pkt.id\n"
+        "  ) {\n"
+        "    if (~has_dup) {\n"
+        "      __Send_NoDup(__pkt);\n"
+        "    }\n"
+        "    else {\n"
+        "      either {\n"
+        "        await __max_duplication > 0;\n"
+        "        __max_duplication := __max_duplication - 1;\n"
+        "        __Send_NoDup(__pkt);\n"
+        "      }\n"
+        "      or {\n"
+        "        skip;\n"
+        "      }\n"
         "    }\n"
         "  }\n"
         "}\n";

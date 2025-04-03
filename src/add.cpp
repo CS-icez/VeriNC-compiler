@@ -61,6 +61,13 @@ void TLABuilder::addOurConstants() {
         addNewName(max_out_of_order, false);
         configs.emplace_back(max_out_of_order, "0");
     }
+    // `MAX_DUPLICATION = 0`
+    auto max_duplication = "MAX_DUPLICATION";
+    not_defined = (rg::find(configs, max_duplication, proj) == configs.end());
+    if (not_defined) {
+        addNewName(max_duplication, false);
+        configs.emplace_back(max_duplication, "0");
+    }
 
     // `__links = src1 :> {dst1, ...} @@ ...`
     vector<string> link_entries;
@@ -105,6 +112,9 @@ void TLABuilder::addOurVariables() {
 
     // `__max_out_of_order = MAX_OUT_OF_ORDER`
     type2varDecls[all].emplace_back("__max_out_of_order", "MAX_OUT_OF_ORDER", false);
+
+    // `__max_duplication = MAX_DUPLICATION`
+    type2varDecls[all].emplace_back("__max_duplication", "MAX_DUPLICATION", false);
 
     // __flying = {}
     // __num = 0

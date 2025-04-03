@@ -24,9 +24,6 @@ protocol {
     var(all) agents = [m \in MACHINE_SET |-> null];
     const(all) EMPTY_AGENT = [mode |-> FREE, holders |-> {}, wqueue |-> <<>>, incarnation |-> 0];
 
-    fn NoDupPkt(pkt) = \A n \in NODE_SET :
-        \A i \in DOMAIN __net_buf[n] : __net_buf[n][i].id # pkt.id;
-
     fn Mac(client) = (client - 1) \div CLIENTS_PER_MACHINE + 1;
     fn Clients(mac) = ((mac - 1) * CLIENTS_PER_MACHINE + 1)..(mac * CLIENTS_PER_MACHINE);
 
@@ -268,7 +265,6 @@ protocol {
     L_ClientRetx:
         while (stage < 3 /\ pending # {}) {
             temp psn = CHOOSE x \in pending : TRUE;
-            wait(NoDupPkt(requests[psn]));
             send(requests[psn]);
         }
     }
@@ -323,7 +319,7 @@ protocol {
             SwitchReplyRequester(GRANT, pkt @@ "agent" :> null);
         }
         else {
-        SwitchForwardToAgent(ACQUIRE, pkt);
+            SwitchForwardToAgent(ACQUIRE, pkt);
         }
     }
 

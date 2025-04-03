@@ -8,7 +8,7 @@ configuration {
 
 topology {
     nodetype Client, Switch;
-    node(Client) c1, c2, c3;
+    node(Client) c1 = 1, c2 = 2, c3 = 3;
     node(Switch) sw;
     link c1, c2, c3 -- sw;
 }
@@ -19,6 +19,7 @@ protocol {
     const(all) res = [i \in REQ_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})];
 
     const(Client) requests = [i \in REQ_SET |-> [
+        id |-> (self - 1) * REQ_NUM + i,
         wid |-> self,
         ver |-> (i \div AGG_SIZE) % 2,
         idx |-> i % AGG_SIZE,
@@ -64,7 +65,6 @@ protocol {
         while (TRUE) {
             wait(pending # {});
             temp i = MinElem(pending);
-            wait(~Contains(__net_buf[sw], requests[i]));
             send(requests[i]);
         }
     }
