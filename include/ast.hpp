@@ -156,12 +156,15 @@ struct TopologyAST {
     std::vector<std::vector<std::string*>*>* vec_nodes;
     std::vector<std::string*>* srcs;
     std::vector<RouteEntryAST*>* entries;
+    bool is_reliable;
 
     TopologyAST(Rule _rule, std::vector<TypeAST*>* _types, TypeAST* _type,
         std::vector<AssignAST*>* _nodes, std::vector<std::vector<std::string*>*>* _vec_nodes,
-        std::vector<std::string*>* _srcs, std::vector<RouteEntryAST*>* _entries) :
+        std::vector<std::string*>* _srcs, std::vector<RouteEntryAST*>* _entries,
+        bool _is_reliable = false) :
         rule(_rule), types(_types), type(_type), nodes(_nodes),
-            vec_nodes(_vec_nodes), srcs(_srcs), entries(_entries) { }
+            vec_nodes(_vec_nodes), srcs(_srcs), entries(_entries),
+            is_reliable(_is_reliable) { }
 
     ~TopologyAST() {
         delete_if(types);

@@ -37,6 +37,8 @@ Identifier  [a-zA-Z_][a-zA-Z0-9_]*
 "nodetype"      { return NODETYPE; }
 "node"          { return NODE; }
 "link"          { return LINK; }
+"reliable"      { return RELIABLE; }
+"unreliable"    { return UNRELIABLE; }
 "--"            { return DMINUS; }
 "route"         { return ROUTE; }
 "var"           { return VAR; }

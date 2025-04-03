@@ -23,7 +23,7 @@ Assign ::= IDENT ("[" Comma<Exp> "]")* "=" Exp
 Choice ::= IDENT "in" Exp
 Topology ::= "nodetype" Comma<Type> ";"
            | "node" "(" Type ")" Comma<IDENT ("=" Exp)?> ";"
-           | "link" Comma<IDENT> ("--" Comma<IDENT>)* ";"
+           | "link" "(" ("reliable" | "unreliable") ")" Comma<IDENT> ("--" Comma<IDENT>)* ";"
            | "route" "(" Comma<IDENT> ")" "{" RouteEntry* "}"
 Type ::= IDENT
 RouteEntry ::= Comma<IDENT> ":" IDENT ";"

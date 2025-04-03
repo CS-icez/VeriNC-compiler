@@ -76,6 +76,14 @@ void TLABuilder::addOurConstants() {
     }
     vec.emplace_back("__links", join(link_entries, " @@ "));
 
+    // `__reliable_links = {<<src1, dst1>>, ...}`
+    vector<string> reliable_link_entries;
+    for (const auto& [src, dst] : reliable_links) {
+        reliable_link_entries.push_back(format("<<{}, {}>>", src, dst));
+    }
+    t = "{"s + join(reliable_link_entries, ", ") + "}";
+    vec.emplace_back("__reliable_links", t);
+
     // `__next_hop = <<src1, dst1>> :> next1 @@ ...`
     t = "\n          ";
     auto cnt = 1;
@@ -137,6 +145,20 @@ void TLABuilder::addOurFns() {
         const string ident = "      ";
         return "\n" + ident + std::regex_replace(s, std::regex("\n"), "\n" + ident);
     };
+
+    // `__IsReliableLink(src, dst) == <<src, dst>> \in __reliable_links`
+    fns.emplace_back(
+        "__IsReliableLink",
+        vector<string>{"__src", "__dst"},
+        "<<__src, __dst>> \\in __reliable_links"
+    );
+
+    // `__IsUnreliableLink(src, dst) == <<src, dst>> \notin __reliable_links`
+    fns.emplace_back(
+        "__IsUnreliableLink",
+        vector<string>{"__src", "__dst"},
+        "<<__src, __dst>> \\notin __reliable_links"
+    );
 
     // `__MinPsnElem(S) == CHOOSE x \in S : \A y \in S : x.psn <= y.psn`
     fns.emplace_back(

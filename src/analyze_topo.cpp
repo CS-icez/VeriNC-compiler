@@ -42,6 +42,8 @@ void TLABuilder::analyze(TopologyAST* topology) {
                     configs.emplace_back(ident, ident);
                 }
 
+                // Self-link is reliable.
+                reliable_links.insert({ident, ident});
                 // Initialize nexts.
                 for (auto s : nodes) {
                     nexts[ident][s] = null;
@@ -51,8 +53,9 @@ void TLABuilder::analyze(TopologyAST* topology) {
             }
             break;
         }
-        case TopologyAST::Link:
+        case TopologyAST::Link: {
             // Collect links.
+            bool is_reliable = topology->is_reliable;
             for (size_t i = 0; i + 1 < topology->vec_nodes->size(); ++i) {
                 auto srcs = (*topology->vec_nodes)[i];
                 auto dsts = (*topology->vec_nodes)[i + 1];
@@ -69,6 +72,10 @@ void TLABuilder::analyze(TopologyAST* topology) {
                         check(*src != *dst, format("Declare a self-link of {}", *src));
                         links[*src].insert(*dst);
                         links[*dst].insert(*src);
+                        if (is_reliable) {
+                            reliable_links.insert({*src, *dst});
+                            reliable_links.insert({*dst, *src});
+                        }
                         // Neighbors are naturally next hops.
                         nexts[*src][*dst] = *dst;
                         nexts[*dst][*src] = *src;
@@ -76,6 +83,7 @@ void TLABuilder::analyze(TopologyAST* topology) {
                 }
             }
             break;
+        }
         case TopologyAST::Route:
             // Check the existence of sources.
             for (auto src : *topology->srcs) {
@@ -116,15 +124,6 @@ void TLABuilder::analyze(TopologyAST* topology) {
         default:
             assert(false && "Internal error: unknown topology type");
     }
-}
-
-namespace std {
-    template <>
-    struct hash<pair<string, string>> {
-        size_t operator()(const pair<string, string>& p) const {
-            return hash<string>()(p.first) ^ hash<string>()(p.second);
-        }
-    };
 }
 
 void TLABuilder::completeNexts() {

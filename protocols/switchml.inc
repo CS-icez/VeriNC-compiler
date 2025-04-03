@@ -10,7 +10,7 @@ topology {
     nodetype Client, Switch;
     node(Client) c1 = 1, c2 = 2, c3 = 3;
     node(Switch) sw;
-    link c1, c2, c3 -- sw;
+    link(unreliable) c1, c2, c3 -- sw;
 }
 
 protocol {

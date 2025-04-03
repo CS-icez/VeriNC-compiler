@@ -60,7 +60,7 @@ void yyerror(SpecAST*&, const char* s);
 %token <p_string> IDENT OTHER_TOKEN
 %token <p_string>
     CONFIGURATION TOPOLOGY PROTOCOL PROPERTY
-    NODETYPE NODE LINK DMINUS ROUTE
+    NODETYPE NODE LINK RELIABLE UNRELIABLE DMINUS ROUTE
     VAR CONST FN MACRO THREAD TEMP IN
     IF ELIF ELSE WHILE BREAK CONTINUE
     PRIMITIVE
@@ -152,7 +152,8 @@ Topologies
 Topology
     : NODETYPE Types ';' { $$ = make_ast<TopologyAST>(TopologyAST::NodeType, $2, n5); }
     | NODE '(' Type ')' SemiDecls ';' { $$ = make_ast<TopologyAST>(TopologyAST::Node, n1, $3, $5, n3); }
-    | LINK Links ';' { $$ = make_ast<TopologyAST>(TopologyAST::Link, n3, $2, n2); }
+    | LINK '(' RELIABLE ')' Links ';' { $$ = make_ast<TopologyAST>(TopologyAST::Link, n3, $5, n2, true); }
+    | LINK '(' UNRELIABLE ')' Links ';' { $$ = make_ast<TopologyAST>(TopologyAST::Link, n3, $5, n2, false); }
     | ROUTE '(' Idents ')' '{' RouteEntries '}' { $$ = make_ast<TopologyAST>(TopologyAST::Route, n4, $3, $6); }
     ;
 

@@ -10,8 +10,8 @@ topology {
     node(Client) c0 = 0, c1 = 1, c2 = 2;
     node(Switch) sw;
     node(PS) ps;
-    link c0, c1, c2 -- sw;
-    link sw -- ps;
+    link(unreliable) c0, c1, c2 -- sw;
+    link(unreliable) sw -- ps;
 }
 
 protocol {

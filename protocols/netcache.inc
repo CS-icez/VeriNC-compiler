@@ -16,8 +16,8 @@ topology {
     node(Controller) ctrler;
     node(Switch) sw;
     node(Server) svr;
-    link c1 -- sw -- svr;
-    link sw -- ctrler -- svr;
+    link(unreliable) c1 -- sw -- svr;
+    link(unreliable) sw -- ctrler -- svr;
     route(ctrler) { c1 : sw; }
     route(svr) { c1 : sw; }
 }

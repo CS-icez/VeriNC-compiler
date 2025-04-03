@@ -6,6 +6,15 @@
 #include "exp_t.hpp"
 #include "tribool.hpp"
 
+namespace std {
+    template <>
+    struct hash<pair<string, string>> {
+        size_t operator()(const pair<string, string>& p) const {
+            return hash<string>()(p.first) ^ hash<string>()(p.second);
+        }
+    };
+}
+
 class TLABuilder {
     // `using std::pair` is not allowed in class scope,
     // but use it in namespace scope of a header file
@@ -81,6 +90,7 @@ private:
     vector<string> nodes_in_order;
     umap<string, vector<string>> type2nodes;
     umap<string, uset<string>> links;
+    uset<pair<string, string>> reliable_links;
     // src -> (dst -> next)
     umap<string, umap<string, string>> nexts;
 
