@@ -24,19 +24,22 @@ std::string TLABuilder::buildTLA() {
     res += "(* --fair algorithm main {\n";
 
     res += "  variables\n";
+    for (const auto& [name, exp, is_choice] : type2varDecls[all]) {
+        auto op = is_choice ? "\\in" : "=";
+        auto exp_s = exp.to_string();
+        res += format("    {} {} {};\n", name, op, exp_s);
+    }
     for (const auto& [type, vec] : type2varDecls) {
+        if (type == all) {
+            continue;
+        }
+        auto type_set = toUpper(type) + "_SET";
         for (const auto& [name, exp, is_choice] : vec) {
-            auto op = is_choice ? "\\in" : "=";
-            auto type_set = toUpper(type) + "_SET";
             auto exp_s = exp.to_string();
-            if (type == all) {
-                res += format("    {} {} {};\n", name, op, exp_s);
+            if (is_choice) {
+                res += format("    {} \\in [{} -> ({})];\n", name, type_set, exp_s);
             } else {
-                if (is_choice) {
-                    res += format("    {} \\in [{} -> ({})];\n", name, type_set, exp_s);
-                } else {
-                    res += format("    {} = [__n \\in {} |-> ({})];\n", name, type_set, exp_s);
-                }
+                res += format("    {} = [__n \\in {} |-> ({})];\n", name, type_set, exp_s);
             }
         }
     }
@@ -162,7 +165,7 @@ std::string TLABuilder::buildMacros() {
         "    has_dup = \n"
         "      /\\ \"id\" \\in DOMAIN __pkt\n"
         "      /\\ \\E __n \\in NODE_SET : \\E __i \\in DOMAIN __net_buf[__n] :\n"
-        "        \"id\" \\in DOMAIN __net_buf[__n][__i] \\/ __net_buf[__n][__i].id = __pkt.id\n"
+        "        \"id\" \\in DOMAIN __net_buf[__n][__i] /\\ __net_buf[__n][__i].id = __pkt.id\n"
         "  ) {\n"
         "    if (~has_dup) {\n"
         "      __Send_NoDup(__pkt);\n"
@@ -642,7 +645,19 @@ std::string TLABuilder::buildCFG() {
             res += format("  {}\n", name);
         }
     }
-    // TODO: symmetry.
+
+    auto symmetry = "SYMMETRY_REDUCTION";
+    auto proj = &decltype(configs)::value_type::first;
+    auto defined = rg::find(configs, symmetry, proj) != configs.end();
+    if (defined) {
+        res += "SYMMETRY\n";
+        for (const auto& [type, nodes] : type2nodes) {
+            if (nodes.size() > 1) {
+                res += format("  {}\n", toUpper(type) + "_SYMMETRY");
+            }
+        }
+    }
+
     DEBUG("Exit {}", __func__);
     return res;
 }

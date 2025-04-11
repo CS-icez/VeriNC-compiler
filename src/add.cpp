@@ -101,7 +101,18 @@ void TLABuilder::addOurConstants() {
     }
     vec.emplace_back("__next_hop", t);
 
-    // TODO: symmetry.
+    auto symmetry = "SYMMETRY_REDUCTION";
+    not_defined = (rg::find(configs, symmetry, proj) == configs.end());
+    if (!not_defined) {
+        for (const auto& [type, nodes] : type2nodes) {
+            if (nodes.size() > 1) {
+                auto type_sym = toUpper(type) + "_SYMMETRY";
+                auto type_set = toUpper(type) + "_SET";
+                addNewName(type_sym, false);
+                vec.emplace_back(type_sym, format("Permutations({})", type_set));
+            }
+        }
+    }
 
     // Wait for `vector::insert_range` in C++23.
     type2constDecls[all].insert(type2constDecls[all].begin(), vec.begin(), vec.end());

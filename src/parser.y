@@ -1,5 +1,5 @@
 %glr-parser
-%define parse.error detailed
+%define parse.error verbose
 
 %code requires {
 

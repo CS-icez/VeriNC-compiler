@@ -8,18 +8,19 @@ configuration {
 
 topology {
     nodetype Client, Switch;
-    node(Client) c1 = 1, c2 = 2, c3 = 3;
+    node(Client) c1, c2, c3;
     node(Switch) sw;
     link(unreliable) c1, c2, c3 -- sw;
 }
 
 protocol {
     const(all) REQ_SET = 0..(REQ_NUM - 1), AGG_SET = 0..(AGG_SIZE - 1);
-    const(all) req_val = [c \in CLIENT_SET, i \in REQ_SET |-> RandomElement(0..100000)];
-    const(all) res = [i \in REQ_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})];
+    var(all) req_val = [c \in CLIENT_SET, i \in REQ_SET |-> RandomElement(0..100000)];
+    var(all) res = [i \in REQ_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})];
+    var(all) client2num = CHOOSE x \in Injection(CLIENT_SET, 1..CLIENT_NUM) : TRUE;
 
-    const(Client) requests = [i \in REQ_SET |-> [
-        id |-> (self - 1) * REQ_NUM + i,
+    var(Client) requests = [i \in REQ_SET |-> [
+        id |-> (client2num[self] - 1) * REQ_NUM + i,
         wid |-> self,
         ver |-> (i \div AGG_SIZE) % 2,
         idx |-> i % AGG_SIZE,

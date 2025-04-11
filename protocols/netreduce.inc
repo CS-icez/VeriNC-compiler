@@ -11,7 +11,7 @@ configuration {
 
 topology {
     nodetype Client, Switch;
-    node(Client) c0 = 0, c1 = 1;
+    node(Client) c0, c1;
     node(Switch) sw;
     link(unreliable) c0, c1 -- sw;
 }
@@ -23,16 +23,17 @@ protocol {
     const(all) WINDOW_SIZE = WINDOW_MSG_NUM * MSG_SIZE;
     const(all) AGG_NUM = 2 * WINDOW_SIZE;
     const(all) AGG_SET = 0..(AGG_NUM - 1);
-    const(all) req_val = [c \in CLIENT_SET, i \in PSN_SET |-> RandomElement(0..100000)];
-    const(all) res = [i \in PSN_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})];
+    var(all) req_val = [c \in CLIENT_SET, i \in PSN_SET |-> RandomElement(0..100000)];
+    var(all) res = [i \in PSN_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})];
+    var(all) client2num = CHOOSE x \in Injection(CLIENT_SET, 0..(CLIENT_NUM - 1)) : TRUE;
     var(all) active_clients = CLIENT_SET;
 
-    const(Client) prev = (self + CLIENT_NUM - 1) % CLIENT_NUM;
-    const(Client) next = (self + 1) % CLIENT_NUM;
-    const(Client) requests = [i \in PSN_SET |-> [
-        id |-> self * REQ_NUM + i,
+    var(Client) prev = CHOOSE x \in CLIENT_SET : client2num[x] = (client2num[self] + CLIENT_NUM - 1) % CLIENT_NUM;
+    var(Client) next = CHOOSE x \in CLIENT_SET : client2num[x] = (client2num[self] + 1) % CLIENT_NUM;
+    var(Client) requests = [i \in PSN_SET |-> [
+        id |-> client2num[self] * PSN_NUM + i,
         src |-> self,
-        dst |-> (self + 1) % CLIENT_NUM,
+        dst |-> next,
         msg_id |-> i \div MSG_SIZE,
         psn |-> i,
         val |-> req_val[self, i],

@@ -7,7 +7,7 @@ configuration {
 
 topology {
     nodetype Client, Switch, PS;
-    node(Client) c0 = 0, c1 = 1, c2 = 2;
+    node(Client) c0, c1, c2;
     node(Switch) sw;
     node(PS) ps;
     link(unreliable) c0, c1, c2 -- sw;
@@ -16,15 +16,16 @@ topology {
 
 protocol {
     const(all) REQ_SET = 1..REQ_NUM;
-    const(all) req_val = [c \in CLIENT_SET, i \in REQ_SET |-> RandomElement(0..100000)];
-    const(all) res = [i \in REQ_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})];
+    var(all) req_val = [c \in CLIENT_SET, i \in REQ_SET |-> RandomElement(0..100000)];
+    var(all) res = [i \in REQ_SET |-> SumSet({req_val[c, i] : c \in CLIENT_SET})];
+    var(all) client2num = CHOOSE x \in Injection(CLIENT_SET, 0..(CLIENT_NUM - 1)) : TRUE;
     var(all) max_jobs = MAX_JOBS;
 
-    const(Client) requests = [i \in REQ_SET |-> [
-        id |-> self * REQ_NUM + i,
+    var(Client) requests = [i \in REQ_SET |-> [
+        id |-> client2num[self] * REQ_NUM + i,
         value |-> req_val[self, i],
         psn |-> i,
-        bitmap |-> 2 ^ self,
+        bitmap |-> 2 ^ client2num[self],
         isAck |-> FALSE,
         resend |-> FALSE,
         collision |-> FALSE,
