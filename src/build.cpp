@@ -196,7 +196,7 @@ std::string TLABuilder::buildMacros() {
         "        if (__s = __h) {\n"
         "          __net_buf[__h] := Tail(__InsertAtEnd(@, __pos, __pkt));\n"
         "        } else {\n"
-        "          __net_buf[__h] := __InsertAtEnd(@, __pos, pkt) ||\n"
+        "          __net_buf[__h] := __InsertAtEnd(@, __pos, __pkt) ||\n"
         "          __net_buf[__s] := Tail(@);\n"
         "        }\n"
         "      };\n"

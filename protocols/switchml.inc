@@ -1,9 +1,9 @@
 configuration {
     MAX_LOSS = 0;
-    MAX_OUT_OF_ORDER = 0;
-    TERMINATION_CHECK = TRUE;
+    MAX_OUT_OF_ORDER = 1;
     AGG_SIZE = 1;
-    REQ_NUM = 2;
+    REQ_NUM = 3;
+    TERMINATION_CHECK = TRUE;
 }
 
 topology {
