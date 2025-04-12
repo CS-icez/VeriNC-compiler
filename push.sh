@@ -28,5 +28,5 @@ send_directory "src"
 send_directory "include"
 send_directory "lib"
 
-send_file "verinc"
+# send_file "verinc"
 send_file "Makefile"

@@ -186,6 +186,9 @@ private:
     string findNext(const string& src, const string& dst,
         uset<pair<string, string>>& visited);
 
+    bool configContains(const string& name) const;
+    bool configEnables(const string& name) const;
+
     void addOurConstants();
     void addOurVariables();
     void addOurFns();

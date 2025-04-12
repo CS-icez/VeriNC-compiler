@@ -45,7 +45,7 @@ protocol {
     var(Server) s_value = 0;
     var(Server) blocked = FALSE;
     var(Server) retx_msg = null;
-    var(Server) blocked_msgs = <<>>;
+    var(all) blocked_msgs = <<>>;
 
     thread(Client) ClientApp {
     L_ClientApp:
@@ -78,6 +78,7 @@ protocol {
             temp s = 1..(base - 1) \cap {i \in REQ_SET : replies[i] = null};
             wait(s # {});
             temp psn = CHOOSE i \in s : TRUE; // Choose the minium psn.
+            wait(\A i \in DOMAIN blocked_msgs : blocked_msgs[i].id # requests[psn].id);
             send(requests[psn]);
             // Trigger __CheckCacheConsistency?
         }

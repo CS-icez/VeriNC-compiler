@@ -391,8 +391,7 @@ std::string TLABuilder::buildMacros() {
     res += add_indent(m) + "\n";
 
     // __CheckCacheConsistency
-    if (auto proj = &decltype(configs)::value_type::first;
-        rg::find(configs, "CHECK_CACHE_CONSISTENCY", proj) != configs.end()) {
+    if (configEnables("CHECK_CACHE_CONSISTENCY")) {
         // TODO: assumptions.
         m = "macro __CheckCacheConsistency(__pkt, __is_start) {\n"
             "  if (__pkt.op = WRITE /\\ __is_start) {\n"
@@ -647,9 +646,7 @@ std::string TLABuilder::buildCFG() {
     }
 
     auto symmetry = "SYMMETRY_REDUCTION";
-    auto proj = &decltype(configs)::value_type::first;
-    auto defined = rg::find(configs, symmetry, proj) != configs.end();
-    if (defined) {
+    if (configEnables(symmetry)) {
         res += "SYMMETRY\n";
         for (const auto& [type, nodes] : type2nodes) {
             if (nodes.size() > 1) {

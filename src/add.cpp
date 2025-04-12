@@ -9,6 +9,20 @@ using std::format;
 using namespace std::string_literals;
 namespace rg = std::ranges;
 
+bool TLABuilder::configContains(const string& name) const {
+    auto proj = &decltype(configs)::value_type::first;
+    return rg::find(configs, name, proj) != configs.end();
+}
+
+bool TLABuilder::configEnables(const string& name) const {
+    auto proj = &decltype(configs)::value_type::first;
+    auto it = rg::find(configs, name, proj);
+    if (it != configs.end()) {
+        return it->second == "TRUE" || it->second == "1";
+    }
+    return false;
+}
+
 void TLABuilder::addOurConstants() {
     // `null = null`
     configs.emplace_back(null, null);
@@ -48,23 +62,19 @@ void TLABuilder::addOurConstants() {
 
     // `MAX_LOSS = 0`
     auto max_loss = "MAX_LOSS";
-    auto proj = &decltype(configs)::value_type::first;
-    bool not_defined = (rg::find(configs, max_loss, proj) == configs.end());
-    if (not_defined) {
+    if (!configContains(max_loss)) {
         addNewName(max_loss, false);
         configs.emplace_back(max_loss, "0");
     }
     // `MAX_OUT_OF_ORDER = 0`
     auto max_out_of_order = "MAX_OUT_OF_ORDER";
-    not_defined = (rg::find(configs, max_out_of_order, proj) == configs.end());
-    if (not_defined) {
+    if (!configContains(max_out_of_order)) {
         addNewName(max_out_of_order, false);
         configs.emplace_back(max_out_of_order, "0");
     }
     // `MAX_DUPLICATION = 0`
     auto max_duplication = "MAX_DUPLICATION";
-    not_defined = (rg::find(configs, max_duplication, proj) == configs.end());
-    if (not_defined) {
+    if (!configContains(max_duplication)) {
         addNewName(max_duplication, false);
         configs.emplace_back(max_duplication, "0");
     }
@@ -102,8 +112,7 @@ void TLABuilder::addOurConstants() {
     vec.emplace_back("__next_hop", t);
 
     auto symmetry = "SYMMETRY_REDUCTION";
-    not_defined = (rg::find(configs, symmetry, proj) == configs.end());
-    if (!not_defined) {
+    if (!configEnables(symmetry)) {
         for (const auto& [type, nodes] : type2nodes) {
             if (nodes.size() > 1) {
                 auto type_sym = toUpper(type) + "_SYMMETRY";
@@ -140,8 +149,7 @@ void TLABuilder::addOurVariables() {
     // __reads = {}
     // __values = {0}
     // TODO: assumptions.
-    if (auto proj = &decltype(configs)::value_type::first;
-        rg::find(configs, "CHECK_CACHE_CONSISTENCY", proj) != configs.end()) {
+    if (configEnables("CHECK_CACHE_CONSISTENCY")) {
         type2varDecls[all].emplace_back("__flying", "{}", false);
         type2varDecls[all].emplace_back("__num", "0", false);
         type2varDecls[all].emplace_back("__reads", "{}", false);
@@ -279,17 +287,10 @@ void TLABuilder::addOurFns() {
 }
 
 void TLABuilder::addOurProperties() {
-    auto proj = &decltype(configs)::value_type::first;
-    if (auto it = rg::find(configs, "TERMINATION_CHECK", proj); it != configs.end()) {
-        check(
-            it->second == "TRUE" || it->second == "FALSE",
-            "TERMINATION_CHECK can only be TRUE or FALSE"
+    if (configEnables("TERMINATION_CHECK")) {
+        properties.emplace_back(
+            "__Termination",
+            R"!!(<>(\A __n \in NODE_SET : __active_threads[__n] <= 0))!!"
         );
-        if (it->second == "TRUE") {
-            properties.emplace_back(
-                "__Termination",
-                R"!!(<>(\A __n \in NODE_SET : __active_threads[__n] <= 0))!!"
-            );
-        }
     }
 }
