@@ -13,3 +13,4 @@ tla2tools.jar
 temp*
 verinc
 states
+__pycache__

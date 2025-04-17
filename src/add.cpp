@@ -112,7 +112,7 @@ void TLABuilder::addOurConstants() {
     vec.emplace_back("__next_hop", t);
 
     auto symmetry = "SYMMETRY_REDUCTION";
-    if (!configEnables(symmetry)) {
+    if (configEnables(symmetry)) {
         for (const auto& [type, nodes] : type2nodes) {
             if (nodes.size() > 1) {
                 auto type_sym = toUpper(type) + "_SYMMETRY";
@@ -251,7 +251,7 @@ void TLABuilder::addOurFns() {
     // ```
     // __AllPossibleOutOfOrder(S) ==
     //   LET
-    //     max_range == 0..Max({Len(__net_buf[i]) : i \in S})
+    //     max_range == IF S = {} THEN {} ELSE 0..Max({Len(__net_buf[i]) : i \in S})
     //     ooo_set == [S -> max_range]
     //     ooo_set_possible == {i \in ooo_set : 
     //       /\ (\A j \in DOMAIN i : i[j] \in __OutOfOrderRange(__net_buf[j]) \cup {0})
@@ -261,7 +261,7 @@ void TLABuilder::addOurFns() {
     // ```
     exp = add_indent(
         "LET\n"
-        "  __max_range == 0..Max({Len(__net_buf[__i]) : __i \\in __S})\n"
+        "  __max_range == IF __S = {} THEN {} ELSE 0..Max({Len(__net_buf[__i]) : __i \\in __S})\n"
         "  __ooo_set == [__S -> __max_range]\n"
         "  __ooo_set_possible == {__i \\in __ooo_set : \n"
         "    /\\ (\\A __j \\in DOMAIN __i : __i[__j] \\in __OutOfOrderRange(__net_buf[__j]) \\cup {0})\n"

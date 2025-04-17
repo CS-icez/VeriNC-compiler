@@ -31,6 +31,7 @@ protocol {
         collision |-> FALSE,
         dst |-> ps
     ]];
+    var(Client) base = 1;
     var(Client) epsn = 1;
     var(Client) replied = [i \in REQ_SET |-> FALSE];
 
@@ -52,7 +53,10 @@ protocol {
 
     thread(Client) ClientInitSend {
     L_ClientInitSend:
-        unicast(requests);
+        while (base <= REQ_NUM) {
+            send(requests[base]);
+            base = base + 1;
+        }
     }
 
     thread(Client) ClientRecv {
@@ -76,6 +80,7 @@ protocol {
     thread(Client) ClientRetx {
     L_ClientRetx:
         while (epsn <= REQ_NUM) {
+            wait(base > 1);
             send("resend" :> TRUE @@ requests[epsn]);
         }
     }
