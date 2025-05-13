@@ -19,7 +19,7 @@ plt.bar(np.array(x[0]) + width / 2, y[0], label='开启优化', color='C5', widt
 
 plt.legend(loc='upper left', fontsize=16)
 plt.tight_layout()
-plt.savefig('plot/figures/symmetry-1.pdf')
+plt.savefig('plot/figures/symmetry-1.svg', transparent=True)
 plt.clf()
 
 # Plot 2.
@@ -33,5 +33,5 @@ plt.bar(np.array(x[0]) + width / 2, y[0], label='开启优化', width=width, col
 
 plt.legend(loc='upper left', fontsize=16)
 plt.tight_layout()
-plt.savefig('plot/figures/symmetry-2.pdf')
+plt.savefig('plot/figures/symmetry-2.svg', transparent=True)
 plt.clf()

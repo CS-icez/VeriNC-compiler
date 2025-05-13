@@ -28,7 +28,7 @@ static void check(bool cond, const string& msg) {
 int main(int argc, char* argv[]) {
 	check(
 		argc == 4 && string(argv[2]) == "-o",
-		"Usage: ./bin/main <spec-file> -o <out-dir>"
+		"Usage: ./verinc <spec-file> -o <out-dir>"
 	);
 
 	#ifdef DEBUG_ON

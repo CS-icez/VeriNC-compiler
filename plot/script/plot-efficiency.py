@@ -29,7 +29,7 @@ lines1, labels1 = ax1.get_legend_handles_labels()
 lines2, labels2 = ax2.get_legend_handles_labels()
 ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', fontsize=16)
 plt.tight_layout()
-plt.savefig('plot/figures/efficiency-1.pdf')
+plt.savefig('plot/figures/efficiency-1.svg', transparent=True)
 
 plt.clf()
 
@@ -47,5 +47,5 @@ plt.bar(np.array(x) + width / 2, y, label='访问状态数', width=width, color=
 
 plt.legend(loc='upper left', fontsize=16)
 plt.tight_layout()
-plt.savefig('plot/figures/efficiency-2.pdf')
+plt.savefig('plot/figures/efficiency-2.svg', transparent=True)
 plt.clf()
