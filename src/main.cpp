@@ -67,6 +67,7 @@ int main(int argc, char* argv[]) {
 	flags += "> /dev/null 2>&1";
 	#endif
 	auto cmd = format("java -cp lib/tla2tools.jar pcal.trans {} {}", tla_out.string(), flags);
+	DEBUG("Running command: {}", cmd);
 	std::system(cmd.c_str());
 	auto tla_is = std::ifstream(tla_out);
 	std::string program{

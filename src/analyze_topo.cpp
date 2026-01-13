@@ -3,6 +3,7 @@
 #include <cassert>
 #include <format>
 #include <ranges>
+#include <queue>
 #include "debug.hpp"
 using std::format;
 using namespace std::string_literals;
@@ -126,49 +127,66 @@ void TLABuilder::analyze(TopologyAST* topology) {
     }
 }
 
+// TODO: ensure routing calculation is strictly correct.
+
 void TLABuilder::completeNexts() {
-    uset<pair<string, string>> visited;
     DEBUG("Completing routing tables...");
+    check(
+        !topoHasCircle(),
+        "The topology contains circles, which is not supported for now"
+    );
     for (auto src : nodes) {
-        for (auto dst : nodes) {
-            visited.insert({src, dst});
-            findNext(src, dst, visited);
+        for (auto next : links[src]) {
+            fillNexts(src, next);
         }
     }
     DEBUG("Routing tables completed");
 }
 
-std::string TLABuilder::findNext(const string& src, const string& dst,
-    uset<pair<string, string>>& visited) {
-    // TODO: Guarantee correctness in theory.
-    if (nexts[src][dst] != null) {
-        return nexts[src][dst];
+bool TLABuilder::topoHasCircle() {
+    uset<string> visited;
+    auto start = *nodes.begin();
+    std::queue<pair<string, string>> q; // (current, parent)
+    visited.insert(start);
+    q.push({start, null});
+    while (!q.empty()) {
+        auto [curr, parent] = q.front();
+        q.pop();
+        for (const auto& neighbor : links[curr]) {
+            if (neighbor == parent) {
+                continue;
+            }
+            if (visited.contains(neighbor)) {
+                return true;
+            }
+            visited.insert(neighbor);
+            q.push({neighbor, curr});
+        }
     }
+    check(
+        visited.size() == nodes.size(),
+        "The topology is disconnected, which is not supported for now"
+    );
+    return false;
+}
 
-    auto success_cnt = 0;
-    auto res = null;
-    // Enumerate all possible next hops.
-    for (const auto& next : links[src]) {
-        if (nexts[next][dst] != null) {
-            ++success_cnt;
-            res = next;
-            continue;
+void TLABuilder::fillNexts(const string& src, const string& next) {
+    std::queue<pair<string, string>> q; // (current, parent)
+    q.push({next, src});
+    while (!q.empty()) {
+        auto curr = q.front();
+        q.pop();
+        if (nexts[src][curr.first] == null) {
+            nexts[src][curr.first] = next;
         }
-        if (visited.contains({next, dst})) {
-            continue;
-        }
-        visited.insert({next, dst});
-        auto t = findNext(next, dst, visited);
-        if (t != null) {
-            ++success_cnt;
-            res = next;
+        check(
+            nexts[src][curr.first] == next,
+            format("The route declared from {} to {} conflicts with the topology", src, curr.first)
+        );
+        for (const auto& neighbor : links[curr.first]) {
+            if (neighbor != curr.second) {
+                q.push({neighbor, curr.first});
+            }
         }
     }
-    check(success_cnt > 0, format("{} and {} is not connected", src, dst));
-    check(success_cnt == 1, format(
-        "{} and {} is connected by multiple paths but not explicitly specified",
-        src, dst
-    ));
-    nexts[src][dst] = res;
-    return res;
 }

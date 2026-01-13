@@ -183,8 +183,8 @@ private:
         decltype(LabelMeta::temps)& temps, PathMeta& path);
 
     void completeNexts();
-    string findNext(const string& src, const string& dst,
-        uset<pair<string, string>>& visited);
+    bool topoHasCircle();
+    void fillNexts(const string& src, const string& next);
 
     bool configContains(const string& name) const;
     bool configEnables(const string& name) const;

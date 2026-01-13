@@ -60,6 +60,12 @@ void TLABuilder::addOurConstants() {
     t = string("{") + join(nodes_in_order, ", ") + "}";
     vec.emplace_back(node_set, t);
 
+    // `NODE_NUM = Cardinality(NODE_SET)`
+    auto node_num = "NODE_NUM";
+    addNewName(node_num, false);
+    t = "Cardinality(NODE_SET)";
+    vec.emplace_back(node_num, t);
+
     // `MAX_LOSS = 0`
     auto max_loss = "MAX_LOSS";
     if (!configContains(max_loss)) {
