@@ -381,6 +381,7 @@ std::string TLABuilder::buildMacros() {
     // __Exit
     m = "macro __Exit() {\n"
         "  __active_threads[__Node(self)] := 0;\n"
+        "  goto Done;\n"
         "}\n";
     res += add_indent(m) + "\n";
 
@@ -476,7 +477,7 @@ std::string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
     if (!label_meta.name.starts_with(fake_label) && label_meta.stmts.front()->rule != StmtAST::While) {
         res += format(
             "{}if (__active_threads[__Node(self)] <= 0) {{ goto {}; }};\n",
-            spaces, end_label
+            spaces, "Done"
         );
         res += format("{}else {{\n", spaces);
         indent += 2;
@@ -588,7 +589,7 @@ std::string TLABuilder::buildLabel(const LabelMeta& label_meta, int indent,
                 );
                 res += format(
                     "{}  if (__active_threads[__Node(self)] <= 0) {{ goto {}; }};\n",
-                    spaces, end_label
+                    spaces, "Done"
                 );
                 res += format("{}  else {{\n", spaces);
                 res += buildLabels(*branch_it++, indent + 4, end_label);
