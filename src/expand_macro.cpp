@@ -134,7 +134,7 @@ auto TLABuilder::expandMacro(const string& type, const string& name,
                 );
                 MacroArgMap new_args = args;
                 for (size_t i = 0; i < stmt->exps->size(); ++i) {
-                    auto exp = stmt->exps->at(i);
+                    auto exp = stmt->exps->at(i)->clone();
                     substitute(exp);
                     auto param = params[i];
                     check(
