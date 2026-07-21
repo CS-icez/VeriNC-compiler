@@ -381,7 +381,6 @@ std::string TLABuilder::buildMacros() {
     // __Exit
     m = "macro __Exit() {\n"
         "  __active_threads[__Node(self)] := 0;\n"
-        "  goto Done;\n"
         "}\n";
     res += add_indent(m) + "\n";
 

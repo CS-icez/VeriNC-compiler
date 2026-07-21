@@ -195,7 +195,7 @@ TLABuilder::PathMeta TLABuilder::analyzeIfStmt(const string& type, StmtAST& stmt
             branch_has_sendlike.push_back(elif_path.has_sendlike);
         }
     }
-    
+
     if (stmt.else_stmts != nullptr) {
         auto [else_path, else_label_meta] = analyzeBranch(type, *stmt.else_stmts, path, has_temp);
         res_path |= else_path;
