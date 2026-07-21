@@ -131,13 +131,23 @@ void TLABuilder::analyze(TopologyAST* topology) {
 
 void TLABuilder::completeNexts() {
     DEBUG("Completing routing tables...");
-    check(
-        !topoHasCircle(),
-        "The topology contains circles, which is not supported for now"
-    );
-    for (auto src : nodes) {
-        for (auto next : links[src]) {
-            fillNexts(src, next);
+    bool complete = rg::all_of(nodes, [this](const auto& src) {
+        return rg::all_of(nodes, [this, &src](const auto& dst) {
+            return nexts[src][dst] != null;
+        });
+    });
+    if (complete) {
+        DEBUG("Routing table is already complete, skipping inference");
+    } else {
+        check(
+            !topoHasCircle(),
+            "The topology contains circles and the routing table is incomplete. "
+            "Please provide a complete routing table via `route` declarations"
+        );
+        for (auto src : nodes) {
+            for (auto next : links[src]) {
+                fillNexts(src, next);
+            }
         }
     }
     DEBUG("Routing tables completed");

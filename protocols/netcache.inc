@@ -18,6 +18,7 @@ topology {
     node(Server) svr;
     link(unreliable) c1 -- sw -- svr;
     link(unreliable) sw -- ctrler -- svr;
+    route(c1) { svr, ctrler : sw; }
     route(ctrler) { c1 : sw; }
     route(svr) { c1 : sw; }
 }
