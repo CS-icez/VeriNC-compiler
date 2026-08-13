@@ -199,6 +199,7 @@ verinc-compiler/
 ## Related Repositories
 
 - [verinc-violation](https://github.com/CS-icez/verinc-violation) — Reproduction code for design risks identified by VeriNC in real systems.
+- [EPIC](https://github.com/In-Net/EPIC) — An INC protocol specification and reference system built on the principle of "Unified Abstraction, Polymorphic Realization" (SIGCOMM 2026), which uses VeriNC for formal correctness verification.
 
 ## Citation
 
