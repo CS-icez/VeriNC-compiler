@@ -1,12 +1,12 @@
 # VeriNC Compiler
 
-**VeriNC** is a compiler that translates high-level specifications of **in-network computing (INC)** protocols into [TLA+](https://lamport.azurewebsites.net/tla/tla.html)/[PlusCal](https://lamport.azurewebsites.net/tla/p-manual.pdf) formal specifications for model checking with [TLC](https://github.com/tlaplus/tlaplus). It is the first general-purpose verification tool for INC systems.
+**VeriNC** is a compiler that translates high-level specifications of **in-network computing (INC)** protocols into [TLA+](https://lamport.azurewebsites.net/tla/tla.html)/[PlusCal](https://lamport.azurewebsites.net/tla/p-manual.pdf) formal specifications for model checking with [TLC](https://github.com/tlaplus/tlaplus). It is the first general-purpose tool for verifying INC systems.
 
 VeriNC provides a domain-specific specification language that captures network topology, protocol logic, and correctness properties in a concise form — saving developers **67.2% lines of code** on average compared to writing TLA+ directly.
 
-> 📄 **Paper:** Tianyu Bai, Xiaoxi Zhang, Haoqing Wang, Ying Zhang, Wenfei Wu. *VeriNC: Finding Design Risks of In-Network Computing Systems.* IEEE ICNP 2026.
+> 📄 **Paper:** Tianyu Bai, Xiaoxi Zhang, Haoqing Wang, Ying Zhang, Wenfei Wu. *VeriNC: Finding Design Risks of In-Network Computing Systems.* IEEE ICNP 2026. [[arXiv]](https://arxiv.org/abs/2604.10186)
 >
-> <!-- TODO: Add BibTeX citation when available -->
+> 🏆 **ICNP 2026 Best Paper Award**
 
 ## Features
 
@@ -198,13 +198,25 @@ verinc-compiler/
 
 ## Related Repositories
 
-- [verinc-violation](https://github.com/CS-icez/verinc-violation) — Reproduction code for design risks identified by VeriNC in real systems.
+- [VeriNC Violation](https://github.com/CS-icez/VeriNC-Violation) — Reproduction code for design risks identified by VeriNC in real systems.
+- [VeriNC ICNP 2026 Talk Slides](https://github.com/CS-icez/verinc-icnp26-talk-slides) — Slides for the VeriNC talk at ICNP 2026, with LaTeX source.
 - [EPIC](https://github.com/In-Net/EPIC) — An INC protocol specification and reference system built on the principle of "Unified Abstraction, Polymorphic Realization" (SIGCOMM 2026), which uses VeriNC for formal correctness verification.
 
 ## Citation
 
-<!-- TODO: BibTeX entry will be added once the official citation is available. -->
-
 If you use VeriNC in your research, please cite:
 
-> Tianyu Bai, Xiaoxi Zhang, Haoqing Wang, Ying Zhang, Wenfei Wu. "VeriNC: Finding Design Risks of In-Network Computing Systems." IEEE ICNP, 2026.
+```bibtex
+@inproceedings{bai2026verinc,
+  author    = {Bai, Tianyu and Zhang, Xiaoxi and Wang, Haoqing and Zhang, Ying and Wu, Wenfei},
+  title     = {{VeriNC}: Finding Design Risks of In-Network Computing Systems},
+  booktitle = {2026 IEEE 34th International Conference on Network Protocols (ICNP)},
+  year      = {2026}
+}
+```
+
+The proceedings are not yet on IEEE Xplore, so this entry has no pages or DOI. They will be added once the official record is available.
+
+## Contact
+
+Tianyu Bai — tianyubai@stu.pku.edu.cn
